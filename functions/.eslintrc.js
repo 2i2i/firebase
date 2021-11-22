@@ -10,5 +10,9 @@ module.exports = {
   ],
   rules: {
     quotes: ["error", "double"],
+    "max-len": ["warn", {"code": 80, "ignoreComments": true}],
+  },
+  parserOptions: {
+    "ecmaVersion": 2021,
   },
 };
