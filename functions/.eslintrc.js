@@ -9,7 +9,7 @@ module.exports = {
     "google",
   ],
   rules: {
-    quotes: ["error", "double"],
+    "quotes": ["error", "double"],
     "max-len": ["warn", {"code": 80, "ignoreComments": true}],
   },
   parserOptions: {

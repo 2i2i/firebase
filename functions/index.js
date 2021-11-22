@@ -457,7 +457,7 @@ const calcQuantitiesFromData = (data) => {
       }
     }
     // TODO check and add calc where END_BUDGET written
-    const maxDuration = Math.floor(quantities.budget / quantities.speed.num)
+    const maxDuration = Math.floor(quantities.budget / quantities.speed.num);
     quantities.duration = Math.min(endTime - activeTime, maxDuration);
     const energy = quantities.duration * quantities.speed.num;
     quantities.energy = Math.min(energy, quantities.budget);
