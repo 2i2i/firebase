@@ -722,7 +722,7 @@ exports.endMeeting = functions.https.onCall(async (data, context) => {
     console.log("endMeeting, meetingId, status", meetingId, status);
 
     if (status.startsWith("END_") || status === "SETTLED") return 0;
-    if (data.reason && data.reason === "NO_PICKUP" && status === "ACTIVE") return 0; // ignore no pick timer if already active
+    if (data.reason && data.reason === "NO_PICKUP" && (status === "LOCK_COINS_STARTED" || status === "LOCK_COINS_CONFIRMED" || status === "ACTIVE")) return 0; // ignore no pick timer if already active
 
     // newStatus
     const newStatus = {value: "END_", ts: time};
