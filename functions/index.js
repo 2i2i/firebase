@@ -457,10 +457,15 @@ const calcQuantitiesFromData = (data) => {
       }
     }
     // TODO check and add calc where END_BUDGET written
-    const maxDuration = Math.floor(quantities.budget / quantities.speed.num);
+    console.log("meetingEnded, quantities.speed.num", quantities.speed.num);
+    const maxDuration = quantities.speed.num === 0 ? Infinity : Math.floor(quantities.budget / quantities.speed.num);
+    console.log("meetingEnded, maxDuration", maxDuration);
     quantities.duration = Math.min(endTime - activeTime, maxDuration);
+    console.log("meetingEnded, quantities.duration", quantities.duration);
     const energy = quantities.duration * quantities.speed.num;
+    console.log("meetingEnded, energy", energy);
     quantities.energy = Math.min(energy, quantities.budget);
+    console.log("meetingEnded, quantities.energy", quantities.energy);
   }
 
   return quantities;
@@ -478,10 +483,14 @@ const splitEnergy = (quantities) => {
 const settleMeeting = async (docRef, quantities) => {
   console.log("settleMeeting, quantities", quantities);
   let txId = null;
-  if (quantities.speed.assetId === 0) {
-    txId = await settleALGOMeeting(clientTESTNET, quantities);
-  } else {
-    txId = await settleASAMeeting(clientTESTNET, quantities);
+
+  console.log("settleMeeting, quantities.speed.num", quantities.speed.num);
+  if (quantities.speed.num !== 0) {
+    if (quantities.speed.assetId === 0) {
+      txId = await settleALGOMeeting(clientTESTNET, quantities);
+    } else {
+      txId = await settleASAMeeting(clientTESTNET, quantities);
+    }
   }
 
   console.log("settleMeeting, txId", txId);
