@@ -31,6 +31,28 @@ const SYSTEM_ID = 32969536;
 // const SYSTEM_ACCOUNT = 'WUTGDFVYFLD7VMPDWOO2KOU2YCKIL4OSY43XSV4SBSDIXCRXIPOHUBBLOI';
 const CREATOR_PRIVATE_KEY = "during cost olympic enter remind stage satisfy position dance afraid gym two weird dignity garlic myself alien page sunset waste donate mouse project about soup";
 
+exports.userCreated = functions.auth.user().onCreate((user) => {
+  const docRefUser = db.collection("users").doc(user.uid);
+  const createUserFuture = docRefUser.create({
+    status: "ONLINE",
+    locked: false,
+    currentMeeting: null,
+    bidsIn: [],
+    bio: "",
+    name: "",
+    upVotes: 0,
+    downVotes: 0,
+    heartbeat: 0,
+    tags: [],
+  });
+  const createUserPrivateFuture = docRefUser.collection("private").doc("main").create({
+    bidsOut: [],
+    blocked: [],
+    friends: [],
+  });
+  return Promise.all([createUserFuture, createUserPrivateFuture]);
+});
+
 exports.addBid = functions.https.onCall(async (data, context) => {
   const uidA = context.auth.uid;
   const uidB = data.B;
