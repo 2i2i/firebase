@@ -30,8 +30,9 @@ const NOVALUE_ASSET_ID = 29147319;
 const SYSTEM_ID = 32969536;
 // const SYSTEM_ACCOUNT = 'WUTGDFVYFLD7VMPDWOO2KOU2YCKIL4OSY43XSV4SBSDIXCRXIPOHUBBLOI';
 const CREATOR_PRIVATE_KEY = "during cost olympic enter remind stage satisfy position dance afraid gym two weird dignity garlic myself alien page sunset waste donate mouse project about soup";
+const MIN_INSTANCES = 1;
 
-exports.userCreated = functions.auth.user().onCreate((user) => {
+exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user().onCreate((user) => {
   const docRefUser = db.collection("users").doc(user.uid);
   const createUserFuture = docRefUser.create({
     status: "ONLINE",
@@ -53,7 +54,7 @@ exports.userCreated = functions.auth.user().onCreate((user) => {
   return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
-exports.addBid = functions.https.onCall(async (data, context) => {
+exports.addBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const uidA = context.auth.uid;
   const uidB = data.B;
   if (uidA === uidB) return 0;
@@ -105,7 +106,7 @@ exports.addBid = functions.https.onCall(async (data, context) => {
   });
 });
 
-exports.cancelBid = functions.https.onCall(async (data, context) => {
+exports.cancelBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   // change bid status to CANCELED
   // remove bid from B bidsIn
   // remove bid from A private bidsOut and bidsOutUsers
@@ -177,7 +178,7 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
 };
 
-exports.acceptBid = functions.https.onCall(async (data, context) => {
+exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("data", data);
@@ -265,7 +266,7 @@ exports.acceptBid = functions.https.onCall(async (data, context) => {
   });
 });
 
-exports.giftALGO = functions.https.onCall(async (data, context) => {
+exports.giftALGO = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
   console.log("creatorAccount.addr", creatorAccount.addr);
 
@@ -278,7 +279,7 @@ exports.giftALGO = functions.https.onCall(async (data, context) => {
       1000000);
 });
 
-exports.giftASA = functions.https.onCall(async (data, context) => {
+exports.giftASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
   console.log("creatorAccount.addr", creatorAccount.addr);
 
@@ -347,7 +348,7 @@ const sendASA = async (client, fromAccount, toAccount, amount, assetIndex) => {
 };
 
 // TODO could check that transaction really pending and is the correct one
-exports.meetingLockCoinsStarted = functions.https.onCall(async (data, context) => {
+exports.meetingLockCoinsStarted = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("meetingLockCoinsStarted, data", data);
@@ -372,7 +373,7 @@ exports.meetingLockCoinsStarted = functions.https.onCall(async (data, context) =
   });
 });
 
-exports.meetingLockCoinsConfirmed = functions.https.onCall(async (data, context) => {
+exports.meetingLockCoinsConfirmed = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("meetingLockCoinsConfirmed, data", data);
@@ -392,7 +393,7 @@ exports.meetingLockCoinsConfirmed = functions.https.onCall(async (data, context)
   });
 });
 
-exports.meetingRoomCreated = functions.https.onCall(async (data, context) => {
+exports.meetingRoomCreated = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("meetingRoomCreated, data", data);
@@ -419,7 +420,7 @@ exports.meetingRoomCreated = functions.https.onCall(async (data, context) => {
   });
 });
 
-exports.meetingEnded = functions.firestore
+exports.meetingEnded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
     .document("meetings/{meetingId}")
     .onUpdate((change, context) => {
       const newStatusList = change.after.data().status;
@@ -628,13 +629,13 @@ const settleASAMeeting = async (
 
 // ONLY USE MANUALLY
 // deleteAllAuthUsers({})
-// exports.deleteAllAuthUsers = functions.https.onCall(async (data, context) => {
-//   const users = await admin.auth().listUsers();
-//   return admin.auth().deleteUsers(users.users.map(u => u.uid));
-// });
+exports.deleteAllAuthUsers = functions.https.onCall(async (data, context) => {
+  const users = await admin.auth().listUsers();
+  return admin.auth().deleteUsers(users.users.map(u => u.uid));
+});
 
 // optInToASA({txId: 'QO47JEGJXGRLUKVQ44CKZXQ2X3C4R3JFT22GCUFABNVIC33BZ4AQ', assetId: 23828034})
-exports.optInToASA = functions.https.onCall(async (data, context) => {
+exports.optInToASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   console.log("optInToASA, data", data);
   await waitForConfirmation(clientTESTNET, data.txId, 5);
   console.log("optInToASA, waitForConfirmation done");
@@ -678,7 +679,7 @@ exports.optInToASA = functions.https.onCall(async (data, context) => {
 // unlock both users
 // change meeting status
 // meetingTxnFailed({meeting: "yYLWe8MxIiCyueA01GiI"})
-exports.meetingTxnFailed = functions.https.onCall(async (data, context) => {
+exports.meetingTxnFailed = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
   const docRefMeeting = db.collection("meetings").doc(data.meetingId);
 
@@ -733,7 +734,7 @@ exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (co
   await Promise.all(promises);
 });
 
-exports.endMeeting = functions.https.onCall(async (data, context) => {
+exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
   console.log("endMeeting, data, time", data, time);
 
