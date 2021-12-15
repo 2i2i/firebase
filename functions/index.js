@@ -1,6 +1,6 @@
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:meetingLockCoinsConfirmed
+// firebase deploy --only functions:ratingAdded
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // addBid({B:"hTL94lXgZyRiitgCtwYAJxd2BDE3",speed:{num:4, assetID: 0},net:"testnet",addrA:"addrA",budget:255})
 // acceptBid({bid: "6GuEWwVFsTmAQiPg38r8", addrB: "addrB"})
@@ -629,10 +629,10 @@ const settleASAMeeting = async (
 
 // ONLY USE MANUALLY
 // deleteAllAuthUsers({})
-exports.deleteAllAuthUsers = functions.https.onCall(async (data, context) => {
-  const users = await admin.auth().listUsers();
-  return admin.auth().deleteUsers(users.users.map(u => u.uid));
-});
+// exports.deleteAllAuthUsers = functions.https.onCall(async (data, context) => {
+//   const users = await admin.auth().listUsers();
+//   return admin.auth().deleteUsers(users.users.map(u => u.uid));
+// });
 
 // optInToASA({txId: 'QO47JEGJXGRLUKVQ44CKZXQ2X3C4R3JFT22GCUFABNVIC33BZ4AQ', assetId: 23828034})
 exports.optInToASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
@@ -776,6 +776,23 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
     T.update(docRefB, {currentMeeting: null, locked: false});
   });
 });
+
+exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
+    .document("meetings/{meetingId}/ratings/{userId}")
+    .onCreate((change, context) => {
+      const userRating = change.get("rating");
+      const userId = context.params.userId;
+      return db.runTransaction(async (T) => {
+        const docRefUser = db.collection("users").doc(userId);
+        const docUser = await docRefUser.get();
+        const newNumRatings = docUser.numRatings + 1;
+        const newRating = (docUser.rating * docUser.numRatings + userRating) / newNumRatings; // works for docUser.numRatings == 0
+        await docRefUser.update({
+          rating: newRating,
+          numRatings: newNumRatings,
+        });
+      });
+    });
 
 // MIGRATION
 
