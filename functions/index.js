@@ -780,13 +780,15 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
 exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
     .document("meetings/{meetingId}/ratings/{userId}")
     .onCreate((change, context) => {
-      const userRating = change.get("rating");
+      const meetingRating = change.get("rating");
       const userId = context.params.userId;
       return db.runTransaction(async (T) => {
         const docRefUser = db.collection("users").doc(userId);
         const docUser = await docRefUser.get();
-        const newNumRatings = docUser.numRatings + 1;
-        const newRating = (docUser.rating * docUser.numRatings + userRating) / newNumRatings; // works for docUser.numRatings == 0
+        const numRatings = docUser.numRatings ?? 0;
+        const userRating = docUser.rating ?? 1;
+        const newNumRatings = numRatings + 1;
+        const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
         await docRefUser.update({
           rating: newRating,
           numRatings: newNumRatings,
