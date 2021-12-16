@@ -41,8 +41,8 @@ exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user
     bidsIn: [],
     bio: "",
     name: "",
-    upVotes: 0,
-    downVotes: 0,
+    rating: 1,
+    numRatings: 0,
     heartbeat: 0,
     tags: [],
   });
