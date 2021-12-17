@@ -778,7 +778,7 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
 });
 
 exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
-    .document("meetings/{meetingId}/ratings/{userId}")
+    .document("users/{userId}/ratings/{ratingId}")
     .onCreate((change, context) => {
       const meetingRating = change.get("rating");
       const userId = context.params.userId;
