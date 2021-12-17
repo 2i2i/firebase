@@ -38,6 +38,22 @@ service cloud.firestore {
       allow read: if request.auth != null && isAOrB(resource.data);
     }
 
+    // bidId matches across bidIn and bidOut
+    match /users/{userId}/bidIns/{bidId}/private/main {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.resource.data.A == request.auth.uid && 'budget' in request.resource.data.keys();
+    }
+    match /users/{userId}/bidIns/{bidId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.keys().toSet() == ['speed', 'net'].toSet();
+      allow update: if request.auth != null && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidIns/$(bidId)/private/main).data.A && request.resource.data.cancelled == true;
+    }
+    match /users/{userId}/bidOuts/{bidId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.keys().toSet() == ['speed', 'net'].toSet();
+      allow update: if request.auth != null && request.auth.uid == userId && request.resource.data.cancelled == true;
+    }
+
     // meeting
     match /meetings/{meetingId} {
       allow read: if request.auth != null && isAOrB(resource.data);
