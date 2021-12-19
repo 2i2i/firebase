@@ -44,7 +44,7 @@ service cloud.firestore {
     }
     match /users/{userId}/bidIns/{bidId}/private/main {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.resource.data.A == request.auth.uid && request.resource.data.keys().toSet() == ['A', 'addrA'].toSet();
+      allow create: if request.auth != null && request.resource.data.A == request.auth.uid && request.resource.data.keys().toSet() == ['A', 'addrA', 'budget'].toSet();
     }
 
     // meeting

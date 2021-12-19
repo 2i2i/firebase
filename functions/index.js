@@ -76,7 +76,7 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
 
     const bidInSpeed = docBidIn.get("speed");
     const bidInNet = docBidIn.get("net");
-    const budget = bidInSpeed.num === 0 ? 0 : null;
+    const budget = docBidInPrivate.get("budget"); // bidInSpeed.num === 0 ? 0 : null;
 
     const bidA = docBidInPrivate.get("A");
     const docRefBidOut = users.doc(bidA).collection("bidOuts").doc(data.bid);
