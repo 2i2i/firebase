@@ -2,8 +2,8 @@
 // firebase functions:shell
 // firebase deploy --only functions:ratingAdded
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
-// addBid({B:"hTL94lXgZyRiitgCtwYAJxd2BDE3",speed:{num:4, assetID: 0},net:"testnet",addrA:"addrA",budget:255})
-// acceptBid({bid: "6GuEWwVFsTmAQiPg38r8", addrB: "addrB"})
+// addBid({B:"hTL94lXgZyRiitgCtwYAJxd2BDE3",speed:{num:4, assetID: 0},net:"testnet",addrA:"addrA"})
+// acceptBid({bid: "ySVM4xCBYssGRImtgzZn", addrB: "addrB"})
 // meetingPaid({meeting: '1JhGOJs2e9uvsr6UWcuA'})
 // endMeeting({meeting: 'i6rP2VTQhkL9zv9P2b5V', endReason: 'TEST'})
 
@@ -38,7 +38,6 @@ exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user
     status: "ONLINE",
     locked: false,
     currentMeeting: null,
-    bidsIn: [],
     bio: "",
     name: "",
     rating: 1,
@@ -47,94 +46,190 @@ exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user
     tags: [],
   });
   const createUserPrivateFuture = docRefUser.collection("private").doc("main").create({
-    bidsOut: [],
     blocked: [],
     friends: [],
   });
   return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
-exports.addBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-  const uidA = context.auth.uid;
-  const uidB = data.B;
-  if (uidA === uidB) return 0;
 
-  console.log("uidA", uidA);
-  console.log("uidB", uidB);
+exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+  const time = Math.floor(new Date().getTime() / 1000);
 
-  const docRefA = db.collection("users").doc(uidA);
-  const docRefB = db.collection("users").doc(uidB);
+  console.log("data", data);
+  const uid = context.auth.uid;
+  const bidB = uid;
+  console.log("uid", uid);
 
+  const users = db.collection("users");
+  const docRefBidIn = users.doc(uid).collection("bidIns").doc(data.bid);
+  const docRefBidInPrivate = docRefBidIn.collection("private").doc("main");
+  console.log("starting tx");
+
+  // TODO performance: use parallels promises
   return db.runTransaction(async (T) => {
-    // check A not locked
-    const docA = await T.get(docRefA);
+    const docBidInFuture = T.get(docRefBidIn);
+    const docBidInPrivateFuture = T.get(docRefBidInPrivate);
+    const docBidReults = await Promise.all([docBidInFuture, docBidInPrivateFuture]);
+    const docBidIn = docBidReults[0];
+    const docBidInPrivate = docBidReults[1];
+
+    const bidInSpeed = docBidIn.get("speed");
+    const bidInNet = docBidIn.get("net");
+    const budget = docBidInPrivate.get("budget"); // bidInSpeed.num === 0 ? 0 : null;
+
+    const bidA = docBidInPrivate.get("A");
+    const docRefBidOut = users.doc(bidA).collection("bidOuts").doc(data.bid);
+    const docBidOut = await T.get(docRefBidOut);
+    const bidOutSpeed = docBidOut.get("speed");
+    const bidOutNet = docBidOut.get("net");
+    const bidOutB = docBidOut.get("B");
+
+    console.log("docBidIn", docBidIn.data());
+    console.log("docBidInPrivate", docBidInPrivate.data());
+    console.log("docBidOut", docBidOut.data());
+
+    // check vs bidOut
+    if (bidB !== bidOutB || bidInNet !== bidOutNet || bidInSpeed.assetId !== bidOutSpeed.assetId || bidInSpeed.num !== bidOutSpeed.num) throw Error("failed to match bidOut");
+
+    // check that bidA and bidB are not locked
+    const docRefA = users.doc(bidA);
+    const docRefB = users.doc(bidB);
+    const docAFuture = T.get(docRefA);
+    const docBFuture = T.get(docRefB);
+    const docABResults = await Promise.all([docAFuture, docBFuture]);
+    const docA = docABResults[0];
+    const docB = docABResults[1];
     const lockedA = docA.get("locked");
+    const lockedB = docB.get("locked");
     console.log("lockedA", lockedA);
-    if (lockedA) return 0;
+    console.log("lockedB", lockedB);
+    if (lockedA === true) throw Error("A.locked === true");
+    if (lockedB === true) throw Error("B.locked === true");
 
-    // check no duplicate bids
-    const docRefAPrivate = docRefA.collection("private").doc("main");
-    const docAPrivate = await T.get(docRefAPrivate);
-    const bidsOut = docAPrivate.get("bidsOut");
-    const bidsOutUsers = bidsOut.map((b) => b.user);
-    if (bidsOutUsers.includes(uidB)) return 0;
-
-    // update firestore
-    const bidDocRef = db.collection("bids").doc();
-    const bidData = {
-      B: data.B,
-      speed: data.speed,
-      net: data.net,
-      status: "OPEN",
+    // create meeting
+    const docRefMeeting = db.collection("meetings").doc();
+    const dataMeeting = {
+      bid: data.bid,
+      A: bidA,
+      B: bidB,
+      speed: bidInSpeed,
+      net: bidInNet,
+      budget: budget,
+      addrB: data.addrB,
+      addrA: docBidInPrivate.get("addrA"),
+      status: [{value: "INIT", ts: time}],
     };
-    T.create(bidDocRef, bidData);
-    const bidPrivateDocRef = bidDocRef.collection("private").doc("main");
-    const bidPrivateData = {
-      A: uidA,
-      B: uidB,
-      addrA: data.addrA,
-      budget: data.budget,
-    };
-    T.create(bidPrivateDocRef, bidPrivateData);
+    T.create(docRefMeeting, dataMeeting);
 
+    // lock
+    T.update(docRefA, {
+      locked: true,
+      currentMeeting: docRefMeeting.id,
+    });
     T.update(docRefB, {
-      bidsIn: admin.firestore.FieldValue.arrayUnion(bidDocRef.id),
+      locked: true,
+      currentMeeting: docRefMeeting.id,
     });
-    T.update(docRefAPrivate, {
-      bidsOut: admin.firestore.FieldValue.arrayUnion({bid: bidDocRef.id, user: uidB}),
-    });
+
+    // bids are not active anymore
+    T.update(docRefBidIn, {active: false});
+    T.update(docRefBidOut, {active: false});
   });
 });
 
-exports.cancelBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-  // change bid status to CANCELED
-  // remove bid from B bidsIn
-  // remove bid from A private bidsOut and bidsOutUsers
+
+// every minute
+const goOffline = (queryDocSnaphotUser) => {
+  const usersColRef = db.collection("users");
+  const docRefUserPrivate = queryDocSnaphotUser.ref.collection("private").doc("main");
   return db.runTransaction(async (T) => {
-    // gets
-    const docRefBid = db.collection("bids").doc(data.bid);
-    const docRefBidPrivate = docRefBid.collection("private").doc("main");
-    const docBidPrivate = await T.get(docRefBidPrivate);
-    const A = docBidPrivate.get("A");
-    const B = docBidPrivate.get("B");
+    const docUserPrivate = await T.get(docRefUserPrivate);
+    const bidsOut = docUserPrivate.get("bidsOut");
+    for (const bidOut of bidsOut) {
+      const docRefUserB = usersColRef.doc(bidOut.user);
+      T.update(docRefUserB, {bidsIn: admin.firestore.FieldValue.arrayRemove(bidOut.bid)});
+    }
+    T.update(docRefUserPrivate, {bidsOut: []});
+    T.update(queryDocSnaphotUser.ref, {status: "OFFLINE"});
+  });
+};
+exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (context) => {
+  const now = Math.floor(new Date().getTime() / 1000);
+  const usersColRef = db.collection("users");
+  const queryRef = usersColRef.where("status", "==", "ONLINE").where("heartbeat", "<", now - 10);
+  const querySnapshot = await queryRef.get();
+  console.log("querySnapshot.size", querySnapshot.size);
+  const promises = [];
+  querySnapshot.forEach(async (queryDocSnapshotUser) => {
+    const p = goOffline(queryDocSnapshotUser);
+    promises.push(p);
+  });
+  await Promise.all(promises);
+});
 
-    // checks
-    if (A !== context.auth.uid) return;
+exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+  const time = Math.floor(new Date().getTime() / 1000);
+  console.log("endMeeting, data, time", data, time);
 
-    // updates
-    T.update(docRefBid, {
-      status: "CANCELED",
-    });
+  const meetingId = data.meetingId;
+  const docRefMeeting = db.collection("meetings").doc(meetingId);
+
+  return db.runTransaction(async (T) => {
+    const docMeeting = await T.get(docRefMeeting);
+
+    // only A xor B can endMeeting
+    const A = docMeeting.get("A");
+    const B = docMeeting.get("B");
+    if (A !== context.auth.uid && B !== context.auth.uid) return 0;
+
+    const statusList = docMeeting.get("status");
+    const status = statusList[statusList.length - 1].value;
+    console.log("endMeeting, meetingId, status", meetingId, status);
+
+    if (status.startsWith("END_") || status === "SETTLED") return 0;
+    if (data.reason && data.reason === "NO_PICKUP" && (status === "LOCK_COINS_STARTED" || status === "LOCK_COINS_CONFIRMED" || status === "ACTIVE")) return 0; // ignore no pick timer if already active
+
+    // newStatus
+    const newStatus = {value: "END_", ts: time};
+    if (data.reason) {
+      newStatus.value += data.reason;
+    } else {
+      newStatus.value += context.auth.uid === A ? "A" : "B";
+    }
+    console.log("endMeeting, newStatus.value", newStatus.value);
+
+    // update meeting
+    const meetingUpdateDoc = {status: admin.firestore.FieldValue.arrayUnion(newStatus)};
+    T.update(docMeeting.ref, meetingUpdateDoc);
+
+    // unlock users
+    const docRefA = db.collection("users").doc(A);
     const docRefB = db.collection("users").doc(B);
-    T.update(docRefB, {
-      bidsIn: admin.firestore.FieldValue.arrayRemove(data.bid),
-    });
-    const docRefAPrivate = db.collection("users").doc(A).collection("private").doc("main");
-    T.update(docRefAPrivate, {
-      bidsOut: admin.firestore.FieldValue.arrayRemove({bid: data.bid, user: B}),
-    });
+    T.update(docRefA, {currentMeeting: null, locked: false});
+    T.update(docRefB, {currentMeeting: null, locked: false});
   });
 });
+
+exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
+    .document("users/{userId}/ratings/{ratingId}")
+    .onCreate((change, context) => {
+      const meetingRating = change.get("rating");
+      const userId = context.params.userId;
+      return db.runTransaction(async (T) => {
+        const docRefUser = db.collection("users").doc(userId);
+        const docUser = await docRefUser.get();
+        const numRatings = docUser.numRatings ?? 0;
+        const userRating = docUser.rating ?? 1;
+        const newNumRatings = numRatings + 1;
+        const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
+        await docRefUser.update({
+          rating: newRating,
+          numRatings: newNumRatings,
+        });
+      });
+    });
+
 
 const waitForConfirmation = async (algodclient, txId, timeout) => {
   if (algodclient == null || txId == null || timeout < 0) {
@@ -155,7 +250,7 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
     if (pendingInfo !== undefined) {
       if (
         pendingInfo["confirmed-round"] !== null &&
-        pendingInfo["confirmed-round"] > 0
+            pendingInfo["confirmed-round"] > 0
       ) {
         // Got the completed Transaction
         return pendingInfo;
@@ -163,7 +258,7 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
 
       if (
         pendingInfo["pool-error"] != null &&
-        pendingInfo["pool-error"].length > 0
+            pendingInfo["pool-error"].length > 0
       ) {
         // If there was a pool error, then the transaction has been rejected!
         throw new Error(
@@ -177,94 +272,6 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   /* eslint-enable no-await-in-loop */
   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
 };
-
-exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-  const time = Math.floor(new Date().getTime() / 1000);
-
-  console.log("data", data);
-  const uid = context.auth.uid;
-  console.log("uid", uid);
-  const docRefBid = db.collection("bids").doc(data.bid);
-  const docRefBidPrivate = docRefBid.collection("private").doc("main");
-  console.log("starting tx");
-
-  // TODO performance: use parallels promises
-  return db.runTransaction(async (T) => {
-    const docBidFuture = T.get(docRefBid);
-    const docBidPrivateFuture = T.get(docRefBidPrivate);
-    const docBidReults = await Promise.all([docBidFuture, docBidPrivateFuture]);
-    const docBid = docBidReults[0];
-    const docBidPrivate = docBidReults[1];
-    const bidB = docBid.get("B");
-    const bidStatus = docBid.get("status");
-    const bidA = docBidPrivate.get("A");
-
-    console.log("bidB", bidB);
-    console.log("bidStatus", bidStatus);
-    console.log("bidA", bidA);
-
-    // check bid coherence
-    if (bidB !== uid) throw Error("bidB != uid");
-    if (bidStatus !== "OPEN") throw Error("bidStatus != OPEN");
-
-    // check that bidA and bidB are not locked
-    const docRefA = db.collection("users").doc(bidA);
-    const docRefB = db.collection("users").doc(bidB);
-    const docAFuture = T.get(docRefA);
-    const docBFuture = T.get(docRefB);
-    const docABResults = await Promise.all([docAFuture, docBFuture]);
-    const docA = docABResults[0];
-    const docB = docABResults[1];
-    const lockedA = docA.get("locked");
-    const lockedB = docB.get("locked");
-    console.log("lockedA", lockedA);
-    console.log("lockedB", lockedB);
-    if (lockedA === true) throw Error("A.locked === true");
-    if (lockedB === true) throw Error("B.locked === true");
-
-    // get A bids out to cancel
-    const docRefAPrivate = docRefA.collection("private").doc("main");
-    const docAPrivate = await T.get(docRefAPrivate);
-    const bidsOutA = docAPrivate.get("bidsOut");
-    T.update(docRefAPrivate, {bidsOut: []});
-    for (const bidOut of bidsOutA) {
-      if (bidOut.bid === data.bid) continue;
-      const docRefBidOut = db.collection("bids").doc(bidOut.bid);
-      T.update(docRefBidOut, {status: "AUTO_CANCEL"});
-    }
-
-    // create meeting
-    const docRefMeeting = db.collection("meetings").doc();
-    const dataMeeting = {
-      bid: data.bid,
-      A: bidA,
-      B: bidB,
-      speed: docBid.get("speed"),
-      budget: docBidPrivate.get("budget"),
-      net: docBid.get("net"),
-      addrB: data.addrB,
-      addrA: docBidPrivate.get("addrA"),
-      status: [{value: "INIT", ts: time}],
-    };
-    T.create(docRefMeeting, dataMeeting);
-
-    // lock
-    T.update(docRefA, {
-      locked: true,
-      currentMeeting: docRefMeeting.id,
-    });
-    T.update(docRefB, {
-      locked: true,
-      currentMeeting: docRefMeeting.id,
-      bidsIn: admin.firestore.FieldValue.arrayRemove(data.bid),
-    });
-
-    // update bid status
-    T.update(docRefBid, {
-      status: "ACCEPTED",
-    });
-  });
-});
 
 exports.giftALGO = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
@@ -389,6 +396,7 @@ exports.meetingLockCoinsConfirmed = functions.runWith({minInstances: MIN_INSTANC
 
     T.update(docRefMeeting, {
       status: admin.firestore.FieldValue.arrayUnion({value: "LOCK_COINS_CONFIRMED", ts: time}),
+      // budget: data.budget,
     });
   });
 });
@@ -457,9 +465,7 @@ exports.meetingEnded = functions.runWith({minInstances: MIN_INSTANCES}).firestor
 const calcQuantitiesFromData = (data) => {
   const quantities = {
     speed: data.speed,
-    budget: data.budget,
     duration: 0,
-    energy: 0,
     addrA: data.addrA,
     addrB: data.addrB,
   };
@@ -481,26 +487,11 @@ const calcQuantitiesFromData = (data) => {
     }
     // TODO check and add calc where END_BUDGET written
     console.log("meetingEnded, quantities.speed.num", quantities.speed.num);
-    const maxDuration = quantities.speed.num === 0 ? Infinity : Math.floor(quantities.budget / quantities.speed.num);
-    console.log("meetingEnded, maxDuration", maxDuration);
-    quantities.duration = Math.min(endTime - activeTime, maxDuration);
+    quantities.duration = endTime - activeTime;
     console.log("meetingEnded, quantities.duration", quantities.duration);
-    const energy = quantities.duration * quantities.speed.num;
-    console.log("meetingEnded, energy", energy);
-    quantities.energy = Math.min(energy, quantities.budget);
-    console.log("meetingEnded, quantities.energy", quantities.energy);
   }
 
   return quantities;
-};
-
-const splitEnergy = (quantities) => {
-  const energies = {
-    energyB: Math.round(quantities.energy * 0.9),
-  };
-  energies.energyFee = quantities.energy - energies.energyB;
-  energies.energyA = quantities.budget - energies.energyB - energies.energyFee;
-  return energies;
 };
 
 const settleMeeting = async (docRef, quantities) => {
@@ -532,9 +523,6 @@ const settleALGOMeeting = async (
     quantities,
 ) => {
   console.log("settleALGOMeeting, quantities", quantities);
-  // energy breakdown
-  const {energyB, energyFee, energyA} = splitEnergy(quantities);
-  console.log("settleALGOMeeting, energyB, energyFee, energyA", energyB, energyFee, energyA);
 
   // accounts
   const accountCreator = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
@@ -582,9 +570,6 @@ const settleASAMeeting = async (
     quantities,
 ) => {
   console.log("settleASAMeeting, quantities", quantities);
-  // energy breakdown
-  const {energyB, energyFee, energyA} = splitEnergy(quantities);
-  console.log("settleASAMeeting, energyB, energyFee, energyA", energyB, energyFee, energyA);
 
   // accounts
   const accountCreator = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
@@ -704,97 +689,6 @@ exports.meetingTxnFailed = functions.runWith({minInstances: MIN_INSTANCES}).http
     });
   });
 });
-
-// every minute
-const goOffline = (queryDocSnaphotUser) => {
-  const usersColRef = db.collection("users");
-  const docRefUserPrivate = queryDocSnaphotUser.ref.collection("private").doc("main");
-  return db.runTransaction(async (T) => {
-    const docUserPrivate = await T.get(docRefUserPrivate);
-    const bidsOut = docUserPrivate.get("bidsOut");
-    for (const bidOut of bidsOut) {
-      const docRefUserB = usersColRef.doc(bidOut.user);
-      T.update(docRefUserB, {bidsIn: admin.firestore.FieldValue.arrayRemove(bidOut.bid)});
-    }
-    T.update(docRefUserPrivate, {bidsOut: []});
-    T.update(queryDocSnaphotUser.ref, {status: "OFFLINE"});
-  });
-};
-exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (context) => {
-  const now = Math.floor(new Date().getTime() / 1000);
-  const usersColRef = db.collection("users");
-  const queryRef = usersColRef.where("status", "==", "ONLINE").where("heartbeat", "<", now - 10);
-  const querySnapshot = await queryRef.get();
-  console.log("querySnapshot.size", querySnapshot.size);
-  const promises = [];
-  querySnapshot.forEach(async (queryDocSnapshotUser) => {
-    const p = goOffline(queryDocSnapshotUser);
-    promises.push(p);
-  });
-  await Promise.all(promises);
-});
-
-exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-  const time = Math.floor(new Date().getTime() / 1000);
-  console.log("endMeeting, data, time", data, time);
-
-  const meetingId = data.meetingId;
-  const docRefMeeting = db.collection("meetings").doc(meetingId);
-
-  return db.runTransaction(async (T) => {
-    const docMeeting = await T.get(docRefMeeting);
-
-    // only A xor B can endMeeting
-    const A = docMeeting.get("A");
-    const B = docMeeting.get("B");
-    if (A !== context.auth.uid && B !== context.auth.uid) return 0;
-
-    const statusList = docMeeting.get("status");
-    const status = statusList[statusList.length - 1].value;
-    console.log("endMeeting, meetingId, status", meetingId, status);
-
-    if (status.startsWith("END_") || status === "SETTLED") return 0;
-    if (data.reason && data.reason === "NO_PICKUP" && (status === "LOCK_COINS_STARTED" || status === "LOCK_COINS_CONFIRMED" || status === "ACTIVE")) return 0; // ignore no pick timer if already active
-
-    // newStatus
-    const newStatus = {value: "END_", ts: time};
-    if (data.reason) {
-      newStatus.value += data.reason;
-    } else {
-      newStatus.value += context.auth.uid === A ? "A" : "B";
-    }
-    console.log("endMeeting, newStatus.value", newStatus.value);
-
-    // update meeting
-    const meetingUpdateDoc = {status: admin.firestore.FieldValue.arrayUnion(newStatus)};
-    T.update(docMeeting.ref, meetingUpdateDoc);
-
-    // unlock users
-    const docRefA = db.collection("users").doc(A);
-    const docRefB = db.collection("users").doc(B);
-    T.update(docRefA, {currentMeeting: null, locked: false});
-    T.update(docRefB, {currentMeeting: null, locked: false});
-  });
-});
-
-exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
-    .document("users/{userId}/ratings/{ratingId}")
-    .onCreate((change, context) => {
-      const meetingRating = change.get("rating");
-      const userId = context.params.userId;
-      return db.runTransaction(async (T) => {
-        const docRefUser = db.collection("users").doc(userId);
-        const docUser = await docRefUser.get();
-        const numRatings = docUser.numRatings ?? 0;
-        const userRating = docUser.rating ?? 1;
-        const newNumRatings = numRatings + 1;
-        const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
-        await docRefUser.update({
-          rating: newRating,
-          numRatings: newNumRatings,
-        });
-      });
-    });
 
 // MIGRATION
 

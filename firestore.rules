@@ -31,11 +31,20 @@ service cloud.firestore {
     }
 
     // bids
-    match /bids/{bidId} {
-      allow read: if request.auth != null;
+    // bidId matches across bidIn and bidOut
+    match /users/{userId}/bidOuts/{bidId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['B', 'speed', 'net', 'active'].toSet();
+      allow update: if request.auth != null && request.auth.uid == userId && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active']);
     }
-    match /bids/{bidId}/private/{document=**} {
-      allow read: if request.auth != null && isAOrB(resource.data);
+    match /users/{userId}/bidIns/{bidId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['speed', 'net', 'active'].toSet();
+      allow update: if request.auth != null && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active']) && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidIns/$(bidId)/private/main).data.A;
+    }
+    match /users/{userId}/bidIns/{bidId}/private/main {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.resource.data.A == request.auth.uid && request.resource.data.keys().toSet() == ['A', 'addrA', 'budget'].toSet();
     }
 
     // meeting
