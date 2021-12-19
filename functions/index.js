@@ -396,7 +396,7 @@ exports.meetingLockCoinsConfirmed = functions.runWith({minInstances: MIN_INSTANC
 
     T.update(docRefMeeting, {
       status: admin.firestore.FieldValue.arrayUnion({value: "LOCK_COINS_CONFIRMED", ts: time}),
-      budget: data.budget,
+      // budget: data.budget,
     });
   });
 });
