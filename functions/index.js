@@ -3,7 +3,7 @@
 // firebase deploy --only functions:ratingAdded
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // addBid({B:"hTL94lXgZyRiitgCtwYAJxd2BDE3",speed:{num:4, assetID: 0},net:"testnet",addrA:"addrA"})
-// acceptBid({bid: "6GuEWwVFsTmAQiPg38r8", addrB: "addrB"})
+// acceptBid({bid: "ySVM4xCBYssGRImtgzZn", addrB: "addrB"})
 // meetingPaid({meeting: '1JhGOJs2e9uvsr6UWcuA'})
 // endMeeting({meeting: 'i6rP2VTQhkL9zv9P2b5V', endReason: 'TEST'})
 
@@ -84,12 +84,12 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
     const bidOutNet = docBidOut.get("net");
     const bidOutB = docBidOut.get("B");
 
-    console.log("docBidIn", docBidIn);
-    console.log("docBidInPrivate", docBidInPrivate);
-    console.log("docBidOut", docBidOut);
+    console.log("docBidIn", docBidIn.data());
+    console.log("docBidInPrivate", docBidInPrivate.data());
+    console.log("docBidOut", docBidOut.data());
 
     // check vs bidOut
-    if (bidB !== bidOutB || bidInNet !== bidOutNet || bidInSpeed !== bidOutSpeed) throw Error("failed to match bidOut");
+    if (bidB !== bidOutB || bidInNet !== bidOutNet || bidInSpeed.assetId !== bidOutSpeed.assetId || bidInSpeed.num !== bidOutSpeed.num) throw Error("failed to match bidOut");
 
     // check that bidA and bidB are not locked
     const docRefA = users.doc(bidA);
