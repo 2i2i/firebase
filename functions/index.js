@@ -140,20 +140,6 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
 
 
 // every minute
-const goOffline = (queryDocSnaphotUser) => {
-  const usersColRef = db.collection("users");
-  const docRefUserPrivate = queryDocSnaphotUser.ref.collection("private").doc("main");
-  return db.runTransaction(async (T) => {
-    const docUserPrivate = await T.get(docRefUserPrivate);
-    const bidsOut = docUserPrivate.get("bidsOut");
-    for (const bidOut of bidsOut) {
-      const docRefUserB = usersColRef.doc(bidOut.user);
-      T.update(docRefUserB, {bidsIn: admin.firestore.FieldValue.arrayRemove(bidOut.bid)});
-    }
-    T.update(docRefUserPrivate, {bidsOut: []});
-    T.update(queryDocSnaphotUser.ref, {status: "OFFLINE"});
-  });
-};
 exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (context) => {
   const now = Math.floor(new Date().getTime() / 1000);
   const usersColRef = db.collection("users");
@@ -162,7 +148,7 @@ exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (co
   console.log("querySnapshot.size", querySnapshot.size);
   const promises = [];
   querySnapshot.forEach(async (queryDocSnapshotUser) => {
-    const p = goOffline(queryDocSnapshotUser);
+    const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
     promises.push(p);
   });
   await Promise.all(promises);
