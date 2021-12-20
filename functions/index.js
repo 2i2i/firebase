@@ -76,7 +76,7 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
 
     const bidInSpeed = docBidIn.get("speed");
     const bidInNet = docBidIn.get("net");
-    const budget = docBidInPrivate.get("budget"); // bidInSpeed.num === 0 ? 0 : null;
+    const budget = bidInSpeed.num === 0 ? 0 : null;
 
     const bidA = docBidInPrivate.get("A");
     const docRefBidOut = users.doc(bidA).collection("bidOuts").doc(data.bid);
@@ -382,7 +382,7 @@ exports.meetingLockCoinsConfirmed = functions.runWith({minInstances: MIN_INSTANC
 
     T.update(docRefMeeting, {
       status: admin.firestore.FieldValue.arrayUnion({value: "LOCK_COINS_CONFIRMED", ts: time}),
-      // budget: data.budget,
+      budget: data.budget,
     });
   });
 });
