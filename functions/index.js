@@ -52,7 +52,6 @@ exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user
   return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
-
 exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
 
@@ -119,6 +118,14 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
       addrB: data.addrB,
       addrA: docBidInPrivate.get("addrA"),
       status: [{value: "INIT", ts: time}],
+      txns: {
+        group: null,
+        lockALGO: null,
+        lockASA: null,
+        state: null,
+        unlock: null,
+        optIn: null,
+      },
     };
     T.create(docRefMeeting, dataMeeting);
 
@@ -137,7 +144,6 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
     T.update(docRefBidOut, {active: false});
   });
 });
-
 
 // every minute
 exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (context) => {
@@ -215,7 +221,6 @@ exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
         });
       });
     });
-
 
 const waitForConfirmation = async (algodclient, txId, timeout) => {
   if (algodclient == null || txId == null || timeout < 0) {
@@ -360,7 +365,7 @@ exports.meetingLockCoinsStarted = functions.runWith({minInstances: MIN_INSTANCES
     if (A !== context.auth.uid) throw Error("A !== context.auth.uid");
 
     T.update(docRefMeeting, {
-      lockTxId: data.lockTxId,
+      txns: data.txns,
       status: admin.firestore.FieldValue.arrayUnion({value: "LOCK_COINS_STARTED", ts: time}),
     });
   });
@@ -498,8 +503,8 @@ const settleMeeting = async (docRef, quantities) => {
   // update meeting
   const time = Math.floor(new Date().getTime() / 1000);
   await docRef.update({
-    status: admin.firestore.FieldValue.arrayUnion({value: "SETTLED", ts: time}),
-    unlockTxId: txId,
+    "status": admin.firestore.FieldValue.arrayUnion({value: "SETTLED", ts: time}),
+    "txns.unlock": txId,
   });
   console.log("settleMeeting, 3");
 };
