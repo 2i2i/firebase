@@ -109,15 +109,14 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
     // create meeting
     const docRefMeeting = db.collection("meetings").doc();
     const dataMeeting = {
-      bid: data.bid,
+      isActive: true,
+      isSettled: false,
       A: bidA,
       B: bidB,
-      speed: bidInSpeed,
-      net: bidInNet,
-      budget: budget,
-      addrB: data.addrB,
       addrA: docBidInPrivate.get("addrA"),
-      status: [{value: "INIT", ts: time}],
+      addrB: data.addrB,
+      budget: budget,
+      duration: null,
       txns: {
         group: null,
         lockALGO: null,
@@ -126,6 +125,14 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
         unlock: null,
         optIn: null,
       },
+      status: "INIT",
+      statusHistory: [{value: "INIT", ts: time}],
+      net: bidInNet,
+      speed: bidInSpeed,
+      bid: data.bid,
+      room: null,
+      coinFlowsA: [],
+      coinFlowsB: [],
     };
     T.create(docRefMeeting, dataMeeting);
 
@@ -175,24 +182,26 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
     const B = docMeeting.get("B");
     if (A !== context.auth.uid && B !== context.auth.uid) return 0;
 
+
+    const status = docMeeting.get("status");
     const statusList = docMeeting.get("status");
-    const status = statusList[statusList.length - 1].value;
     console.log("endMeeting, meetingId, status", meetingId, status);
 
-    if (status.startsWith("END_") || status === "SETTLED") return 0;
-    if (data.reason && data.reason === "NO_PICKUP" && (status === "LOCK_COINS_STARTED" || status === "LOCK_COINS_CONFIRMED" || status === "ACTIVE")) return 0; // ignore no pick timer if already active
+    if (status.startsWith("END_")) return 0;
+    if (data.reason === "TIMER" && status !== "INIT" && status !== "TXN_CREATED" && status !== "CALL_STARTED") return 0; // timer only applies with certain status
+    if (data.reason === "HANGUP_A" && (A !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "HANGUP_B" && (B !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "TXN_FAILED" && status !== "TXN_SENT") return 0;
 
     // newStatus
-    const newStatus = {value: "END_", ts: time};
-    if (data.reason) {
-      newStatus.value += data.reason;
-    } else {
-      newStatus.value += context.auth.uid === A ? "A" : "B";
-    }
-    console.log("endMeeting, newStatus.value", newStatus.value);
+    const newStatus = `END_${data.reason}`;
+    const appendToStatusHistory = {value: newStatus, ts: time};
 
     // update meeting
-    const meetingUpdateDoc = {status: admin.firestore.FieldValue.arrayUnion(newStatus)};
+    const meetingUpdateDoc = {
+      status: newStatus,
+      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
+    };
     T.update(docMeeting.ref, meetingUpdateDoc);
 
     // unlock users
