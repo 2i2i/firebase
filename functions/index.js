@@ -174,6 +174,14 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
   const meetingId = data.meetingId;
   const docRefMeeting = db.collection("meetings").doc(meetingId);
 
+  if (data.reason !== "TIMER" 
+    && data.reason !== "A"
+    && data.reason !== "B"
+    && data.reason !== "TXN_FAILED"
+    && data.reason !== "DISCONNECT_A"
+    && data.reason !== "DISCONNECT_B"
+    && data.reason !== "DISCONNECT_AB") return 0;
+
   return db.runTransaction(async (T) => {
     const docMeeting = await T.get(docRefMeeting);
 
@@ -189,8 +197,8 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
 
     if (status.startsWith("END_")) return 0;
     if (data.reason === "TIMER" && status !== "INIT" && status !== "TXN_CREATED" && status !== "CALL_STARTED") return 0; // timer only applies with certain status
-    if (data.reason === "HANGUP_A" && (A !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
-    if (data.reason === "HANGUP_B" && (B !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "A" && (A !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "B" && (B !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
     if (data.reason === "TXN_FAILED" && status !== "TXN_SENT") return 0;
 
     // newStatus
