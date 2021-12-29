@@ -174,13 +174,13 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
   const meetingId = data.meetingId;
   const docRefMeeting = db.collection("meetings").doc(meetingId);
 
-  if (data.reason !== "TIMER" 
-    && data.reason !== "A"
-    && data.reason !== "B"
-    && data.reason !== "TXN_FAILED"
-    && data.reason !== "DISCONNECT_A"
-    && data.reason !== "DISCONNECT_B"
-    && data.reason !== "DISCONNECT_AB") return 0;
+  if (data.reason !== "END_TIMER" 
+    && data.reason !== "END_A"
+    && data.reason !== "END_B"
+    && data.reason !== "END_TXN_FAILED"
+    && data.reason !== "END_DISCONNECT_A"
+    && data.reason !== "END_DISCONNECT_B"
+    && data.reason !== "END_DISCONNECT_AB") return 0;
 
   return db.runTransaction(async (T) => {
     const docMeeting = await T.get(docRefMeeting);
@@ -192,17 +192,16 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
 
 
     const status = docMeeting.get("status");
-    const statusList = docMeeting.get("status");
     console.log("endMeeting, meetingId, status", meetingId, status);
 
     if (status.startsWith("END_")) return 0;
-    if (data.reason === "TIMER" && status !== "INIT" && status !== "TXN_CREATED" && status !== "CALL_STARTED") return 0; // timer only applies with certain status
-    if (data.reason === "A" && (A !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
-    if (data.reason === "B" && (B !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
-    if (data.reason === "TXN_FAILED" && status !== "TXN_SENT") return 0;
+    if (data.reason === "END_TIMER" && status !== "INIT" && status !== "TXN_CREATED" && status !== "CALL_STARTED") return 0; // timer only applies with certain status
+    if (data.reason === "END_A" && (A !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "END_B" && (B !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "END_TXN_FAILED" && status !== "TXN_SENT") return 0;
 
     // newStatus
-    const newStatus = `END_${data.reason}`;
+    const newStatus = data.reason;
     const appendToStatusHistory = {value: newStatus, ts: time};
 
     // update meeting
@@ -219,6 +218,53 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
     T.update(docRefB, {currentMeeting: null, locked: false});
   });
 });
+
+exports.advanceMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+  const time = Math.floor(new Date().getTime() / 1000);
+  console.log("advanceMeeting, data, time", data, time);
+
+  const uid = context.auth.uid;
+  const meetingId = data.meetingId;
+  const docRefMeeting = db.collection("meetings").doc(meetingId);
+  const docMeeting = await docRefMeeting.get();
+  const A = docMeeting.get("A");
+  const B = docMeeting.get("B");
+  if (A !== uid && B !== uid) return 0;
+  const status = docMeeting.get("status");
+
+  if (data.reason === "ACCEPTED") {
+    if (A !== uid) return 0;
+    if (status !== "INIT") return 0;
+    const newStatus = data.reason;
+    const appendToStatusHistory = {value: newStatus, ts: time};
+    const meetingUpdateDoc = {
+      status: newStatus,
+      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
+    };
+    await docRefMeeting.update(meetingUpdateDoc);
+  } else if (data.reason === "TXN_CREATED") {
+    if (A !== uid) return 0;
+    if (status !== "ACCEPTED") return 0;
+    const newStatus = data.reason;
+    const appendToStatusHistory = {value: newStatus, ts: time};
+    const meetingUpdateDoc = {
+      status: newStatus,
+      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
+    };
+    await docRefMeeting.update(meetingUpdateDoc);
+  } else if (data.reason === "TXN_SIGNED") {
+    if (A !== uid) return 0;
+    if (status !== "TXN_CREATED") return 0;
+    const newStatus = data.reason;
+    const appendToStatusHistory = {value: newStatus, ts: time};
+    const meetingUpdateDoc = {
+      status: newStatus,
+      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
+    };
+    await docRefMeeting.update(meetingUpdateDoc);
+  }
+});
+
 
 exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
     .document("users/{userId}/ratings/{ratingId}")
@@ -361,53 +407,6 @@ const sendASA = async (client, fromAccount, toAccount, amount, assetIndex) => {
 
   return txId;
 };
-
-// TODO could check that transaction really pending and is the correct one
-exports.meetingLockCoinsStarted = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-  const time = Math.floor(new Date().getTime() / 1000);
-
-  console.log("meetingLockCoinsStarted, data", data);
-  const docRefMeeting = db.collection("meetings").doc(data.meetingId);
-
-  return db.runTransaction(async (T) => {
-    const docMeeting = await T.get(docRefMeeting);
-
-    const statusList = docMeeting.get("status");
-    const status = statusList[statusList.length - 1].value;
-    console.log("meetingLockCoinsStarted, status", status);
-    if (status !== "INIT") return 0;
-
-    const A = docMeeting.get("A");
-    console.log("meetingLockCoinsStarted, A", A);
-    if (A !== context.auth.uid) throw Error("A !== context.auth.uid");
-
-    T.update(docRefMeeting, {
-      txns: data.txns,
-      status: admin.firestore.FieldValue.arrayUnion({value: "LOCK_COINS_STARTED", ts: time}),
-    });
-  });
-});
-
-exports.meetingLockCoinsConfirmed = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-  const time = Math.floor(new Date().getTime() / 1000);
-
-  console.log("meetingLockCoinsConfirmed, data", data);
-  const docRefMeeting = db.collection("meetings").doc(data.meetingId);
-
-  return db.runTransaction(async (T) => {
-    const docMeeting = await T.get(docRefMeeting);
-
-    const statusList = docMeeting.get("status");
-    const status = statusList[statusList.length - 1].value;
-    console.log("meetingLockCoinsConfirmed, status", status);
-    if (status !== "LOCK_COINS_STARTED") return 0;
-
-    T.update(docRefMeeting, {
-      status: admin.firestore.FieldValue.arrayUnion({value: "LOCK_COINS_CONFIRMED", ts: time}),
-      budget: data.budget,
-    });
-  });
-});
 
 exports.meetingRoomCreated = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
@@ -666,36 +665,6 @@ exports.optInToASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
     console.log("error", e);
     throw Error(e);
   }
-});
-
-// Algorand A lock txn failed
-// unlock both users
-// change meeting status
-// meetingTxnFailed({meeting: "yYLWe8MxIiCyueA01GiI"})
-exports.meetingTxnFailed = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-  const time = Math.floor(new Date().getTime() / 1000);
-  const docRefMeeting = db.collection("meetings").doc(data.meetingId);
-
-  return db.runTransaction(async (T) => {
-    const docMeeting = await T.get(docRefMeeting);
-
-    const statusList = docMeeting.get("status");
-    const status = statusList[statusList.length - 1].value;
-    if (status !== "INIT") return 0;
-
-    const A = docMeeting.get("A");
-    if (A !== context.auth.uid) return 0; // can only be called by A
-
-    const B = docMeeting.get("B");
-    const docRefA = db.collection("users").doc(A);
-    const docRefB = db.collection("users").doc(B);
-
-    T.update(docRefA, {currentMeeting: null, locked: false});
-    T.update(docRefB, {currentMeeting: null, locked: false});
-    T.update(docRefMeeting, {
-      status: admin.firestore.FieldValue.arrayUnion({value: "ALGORAND_TXN_FAILED", ts: time}),
-    });
-  });
 });
 
 // MIGRATION
