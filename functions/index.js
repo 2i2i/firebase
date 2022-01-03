@@ -20,9 +20,9 @@ const db = admin.firestore();
 //     "",
 // );
 const clientTESTNET = new algosdk.Algodv2(
-    "",
-    "https://testnet.algoexplorerapi.io",
-    "",
+  "",
+  "https://testnet.algoexplorerapi.io",
+  "",
 );
 
 // const MIN_TXN_FEE = 1000;
@@ -32,7 +32,7 @@ const SYSTEM_ID = 32969536;
 const CREATOR_PRIVATE_KEY = "during cost olympic enter remind stage satisfy position dance afraid gym two weird dignity garlic myself alien page sunset waste donate mouse project about soup";
 const MIN_INSTANCES = 1;
 
-exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user().onCreate((user) => {
+exports.userCreated = functions.runWith({ minInstances: MIN_INSTANCES }).auth.user().onCreate((user) => {
   const docRefUser = db.collection("users").doc(user.uid);
   const createUserFuture = docRefUser.create({
     status: "ONLINE",
@@ -52,7 +52,7 @@ exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user
   return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
-exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+exports.acceptBid = functions.runWith({ minInstances: MIN_INSTANCES }).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("data", data);
@@ -116,6 +116,7 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
       addrA: docBidInPrivate.get("addrA"),
       addrB: data.addrB,
       budget: budget,
+      start: null,
       duration: null,
       txns: {
         group: null,
@@ -126,7 +127,7 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
         optIn: null,
       },
       status: "INIT",
-      statusHistory: [{value: "INIT", ts: time}],
+      statusHistory: [{ value: "INIT", ts: time }],
       net: bidInNet,
       speed: bidInSpeed,
       bid: data.bid,
@@ -147,8 +148,8 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
     });
 
     // bids are not active anymore
-    T.update(docRefBidIn, {active: false});
-    T.update(docRefBidOut, {active: false});
+    T.update(docRefBidIn, { active: false });
+    T.update(docRefBidOut, { active: false });
   });
 });
 
@@ -161,26 +162,26 @@ exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (co
   console.log("querySnapshot.size", querySnapshot.size);
   const promises = [];
   querySnapshot.forEach(async (queryDocSnapshotUser) => {
-    const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
+    const p = queryDocSnapshotUser.ref.update({ status: "OFFLINE" });
     promises.push(p);
   });
   await Promise.all(promises);
 });
 
-exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+exports.endMeetingNew = functions.runWith({ minInstances: MIN_INSTANCES }).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
   console.log("endMeeting, data, time", data, time);
 
   const meetingId = data.meetingId;
   const docRefMeeting = db.collection("meetings").doc(meetingId);
 
-  if (data.reason !== "END_TIMER" 
-    && data.reason !== "END_A"
-    && data.reason !== "END_B"
-    && data.reason !== "END_TXN_FAILED"
-    && data.reason !== "END_DISCONNECT_A"
-    && data.reason !== "END_DISCONNECT_B"
-    && data.reason !== "END_DISCONNECT_AB") return 0;
+  if (data.reason !== "END_TIMER" &&
+    data.reason !== "END_A" &&
+    data.reason !== "END_B" &&
+    data.reason !== "END_TXN_FAILED" &&
+    data.reason !== "END_DISCONNECT_A" &&
+    data.reason !== "END_DISCONNECT_B" &&
+    data.reason !== "END_DISCONNECT_AB") return 0;
 
   return db.runTransaction(async (T) => {
     const docMeeting = await T.get(docRefMeeting);
@@ -202,7 +203,7 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
 
     // newStatus
     const newStatus = data.reason;
-    const appendToStatusHistory = {value: newStatus, ts: time};
+    const appendToStatusHistory = { value: newStatus, ts: time };
 
     // update meeting
     const meetingUpdateDoc = {
@@ -214,12 +215,12 @@ exports.endMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
     // unlock users
     const docRefA = db.collection("users").doc(A);
     const docRefB = db.collection("users").doc(B);
-    T.update(docRefA, {currentMeeting: null, locked: false});
-    T.update(docRefB, {currentMeeting: null, locked: false});
+    T.update(docRefA, { currentMeeting: null, locked: false });
+    T.update(docRefB, { currentMeeting: null, locked: false });
   });
 });
 
-exports.advanceMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+exports.advanceMeeting = functions.runWith({ minInstances: MIN_INSTANCES }).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
   console.log("advanceMeeting, data, time", data, time);
 
@@ -230,60 +231,89 @@ exports.advanceMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.
   const A = docMeeting.get("A");
   const B = docMeeting.get("B");
   if (A !== uid && B !== uid) return 0;
-  const status = docMeeting.get("status");
 
-  if (data.reason === "ACCEPTED") {
+  const status = docMeeting.get("status");
+  const newStatus = data.reason;
+  const appendToStatusHistory = { value: newStatus, ts: time };
+  const meetingUpdateDoc = {
+    status: newStatus,
+    statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
+  };
+
+  if (newStatus === "ACCEPTED") {
     if (A !== uid) return 0;
     if (status !== "INIT") return 0;
-    const newStatus = data.reason;
-    const appendToStatusHistory = {value: newStatus, ts: time};
-    const meetingUpdateDoc = {
-      status: newStatus,
-      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
-    };
-    await docRefMeeting.update(meetingUpdateDoc);
-  } else if (data.reason === "TXN_CREATED") {
+  } else if (newStatus === "ACCEPTED_FREE_CALL") {
+    if (A !== uid) return 0;
+    if (status !== "INIT") return 0;
+    meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
+      { value: "ACCEPTED", ts: time },
+      { value: "TXN_CREATED", ts: time },
+      { value: "TXN_SIGNED", ts: time },
+      { value: "TXN_SENT", ts: time },
+      { value: "TXN_CONFIRMED", ts: time },
+    );
+    meetingUpdateDoc.status = "TXN_CONFIRMED";
+  } else if (newStatus === "TXN_CREATED") {
     if (A !== uid) return 0;
     if (status !== "ACCEPTED") return 0;
-    const newStatus = data.reason;
-    const appendToStatusHistory = {value: newStatus, ts: time};
-    const meetingUpdateDoc = {
-      status: newStatus,
-      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
-    };
-    await docRefMeeting.update(meetingUpdateDoc);
-  } else if (data.reason === "TXN_SIGNED") {
+  } else if (newStatus === "TXN_SIGNED") {
     if (A !== uid) return 0;
     if (status !== "TXN_CREATED") return 0;
-    const newStatus = data.reason;
-    const appendToStatusHistory = {value: newStatus, ts: time};
-    const meetingUpdateDoc = {
-      status: newStatus,
-      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
-    };
-    await docRefMeeting.update(meetingUpdateDoc);
-  }
+  } else if (newStatus === "TXN_SENT") {
+    if (A !== uid) return 0;
+    if (status !== "TXN_SIGNED") return 0;
+    meetingUpdateDoc.txns = data.txns;
+  } else if (newStatus === "TXN_CONFIRMED") {
+    if (status !== "TXN_SIGNED") return 0;
+    meetingUpdateDoc.budget = data.budget;
+  } else if (newStatus === "ROOM_CREATED") {
+    if (A !== uid) return 0;
+    if (status !== "TXN_CONFIRMED") return 0;
+    meetingUpdateDoc.room = data.room;
+  } else if (newStatus === "A_RECEIVED_REMOTE") {
+    if (A !== uid) return 0;
+    if (status === "B_RECEIVED_REMOTE") {
+      meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
+        { value: "A_RECEIVED_REMOTE", ts: time },
+        { value: "CALL_STARTED", ts: time },
+      );
+      meetingUpdateDoc.status = "CALL_STARTED";
+      meetingUpdateDoc.start = time;
+    } else if (status !== "ROOM_CREATED") return 0;
+  } else if (newStatus === "B_RECEIVED_REMOTE") {
+    if (B !== uid) return 0;
+    if (status === "A_RECEIVED_REMOTE") {
+      meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
+        { value: "B_RECEIVED_REMOTE", ts: time },
+        { value: "CALL_STARTED", ts: time },
+      );
+      meetingUpdateDoc.status = "CALL_STARTED";
+      meetingUpdateDoc.start = time;
+    } else if (status !== "ROOM_CREATED") return 0;
+  } else return 0;
+  await docRefMeeting.update(meetingUpdateDoc);
 });
 
 
-exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
-    .document("users/{userId}/ratings/{ratingId}")
-    .onCreate((change, context) => {
-      const meetingRating = change.get("rating");
-      const userId = context.params.userId;
-      return db.runTransaction(async (T) => {
-        const docRefUser = db.collection("users").doc(userId);
-        const docUser = await docRefUser.get();
-        const numRatings = docUser.numRatings ?? 0;
-        const userRating = docUser.rating ?? 1;
-        const newNumRatings = numRatings + 1;
-        const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
-        await docRefUser.update({
-          rating: newRating,
-          numRatings: newNumRatings,
-        });
+exports.ratingAdded = functions.runWith({ minInstances: MIN_INSTANCES }).firestore
+  .document("users/{userId}/ratings/{ratingId}")
+  .onCreate((change, context) => {
+    const meetingRating = change.get("rating");
+    const userId = context.params.userId;
+    return db.runTransaction(async (T) => {
+      const docRefUser = db.collection("users").doc(userId);
+      const docUser = await docRefUser.get();
+      const numRatings = docUser.numRatings ?? 0;
+      const userRating = docUser.rating ?? 1;
+      const newNumRatings = numRatings + 1;
+      const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
+      await docRefUser.update({
+        rating: newRating,
+        numRatings: newNumRatings,
       });
     });
+  });
 
 const waitForConfirmation = async (algodclient, txId, timeout) => {
   if (algodclient == null || txId == null || timeout < 0) {
@@ -299,12 +329,12 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   /* eslint-disable no-await-in-loop */
   while (currentround < startround + timeout) {
     const pendingInfo = await algodclient
-        .pendingTransactionInformation(txId)
-        .do();
+      .pendingTransactionInformation(txId)
+      .do();
     if (pendingInfo !== undefined) {
       if (
         pendingInfo["confirmed-round"] !== null &&
-            pendingInfo["confirmed-round"] > 0
+        pendingInfo["confirmed-round"] > 0
       ) {
         // Got the completed Transaction
         return pendingInfo;
@@ -312,11 +342,11 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
 
       if (
         pendingInfo["pool-error"] != null &&
-            pendingInfo["pool-error"].length > 0
+        pendingInfo["pool-error"].length > 0
       ) {
         // If there was a pool error, then the transaction has been rejected!
         throw new Error(
-            `Transaction Rejected pool error${pendingInfo["pool-error"]}`,
+          `Transaction Rejected pool error${pendingInfo["pool-error"]}`,
         );
       }
     }
@@ -327,31 +357,31 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
 };
 
-exports.giftALGO = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+exports.giftALGO = functions.runWith({ minInstances: MIN_INSTANCES }).https.onCall(async (data, context) => {
   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
   console.log("creatorAccount.addr", creatorAccount.addr);
 
-  const userAccount = {addr: data.account};
+  const userAccount = { addr: data.account };
   console.log("data.account", data.account);
 
   return sendALGO(clientTESTNET,
-      creatorAccount,
-      userAccount,
-      1000000);
+    creatorAccount,
+    userAccount,
+    1000000);
 });
 
-exports.giftASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+exports.giftASA = functions.runWith({ minInstances: MIN_INSTANCES }).https.onCall(async (data, context) => {
   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
   console.log("creatorAccount.addr", creatorAccount.addr);
 
-  const userAccount = {addr: data.account};
+  const userAccount = { addr: data.account };
   console.log("data.account", data.account);
 
   return sendASA(clientTESTNET,
-      creatorAccount,
-      userAccount,
-      1000,
-      NOVALUE_ASSET_ID);
+    creatorAccount,
+    userAccount,
+    1000,
+    NOVALUE_ASSET_ID);
 });
 
 const sendALGO = async (client, fromAccount, toAccount, amount) => {
@@ -366,14 +396,14 @@ const sendALGO = async (client, fromAccount, toAccount, amount) => {
     suggestedParams,
   };
   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
-      transactionOptions,
+    transactionOptions,
   );
 
   // sign
   const signedTxn = txn.signTxn(fromAccount.sk);
 
   // send raw
-  const {txId} = await client.sendRawTransaction(signedTxn).do();
+  const { txId } = await client.sendRawTransaction(signedTxn).do();
   console.log("txId");
   console.log(txId);
 
@@ -394,21 +424,21 @@ const sendASA = async (client, fromAccount, toAccount, amount, assetIndex) => {
     suggestedParams,
   };
   const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(
-      transactionOptions,
+    transactionOptions,
   );
 
   // sign
   const signedTxn = txn.signTxn(fromAccount.sk);
 
   // send raw
-  const {txId} = await client.sendRawTransaction(signedTxn).do();
+  const { txId } = await client.sendRawTransaction(signedTxn).do();
   console.log("txId");
   console.log(txId);
 
   return txId;
 };
 
-exports.meetingRoomCreated = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+exports.meetingRoomCreated = functions.runWith({ minInstances: MIN_INSTANCES }).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("meetingRoomCreated, data", data);
@@ -429,45 +459,44 @@ exports.meetingRoomCreated = functions.runWith({minInstances: MIN_INSTANCES}).ht
 
     console.log("meetingRoomCreated, data.currentRoom", data.currentRoom);
     T.update(docRefMeeting, {
-      status: admin.firestore.FieldValue.arrayUnion({value: "ACTIVE", ts: time}),
+      status: admin.firestore.FieldValue.arrayUnion({ value: "ACTIVE", ts: time }),
       currentRoom: data.currentRoom,
     });
   });
 });
 
-exports.meetingEnded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
-    .document("meetings/{meetingId}")
-    .onUpdate((change, context) => {
-      const newStatusList = change.after.data().status;
-      const newStatus = newStatusList[newStatusList.length - 1].value;
-      // is meeting done?
-      console.log("meetingEnded, newStatus", newStatus);
-      if (!newStatus.startsWith("END_")) return 0;
+exports.meetingEnded = functions.runWith({ minInstances: MIN_INSTANCES }).firestore
+  .document("meetings/{meetingId}")
+  .onUpdate((change, context) => {
+    const oldMeeting = change.before.data();
+    const newMeeting = change.after.data();
 
-      const oldStatusList = change.before.data().status;
-      const oldStatus = oldStatusList[oldStatusList.length - 1].value;
-      // has status changed?
-      console.log("meetingEnded, oldStatus", oldStatus);
-      if (oldStatus === newStatus) return 0;
+    // has status changed?
+    console.log("meetingEnded, oldMeeting.status", oldMeeting.status);
+    if (oldMeeting.status === newMeeting.status) return 0;
+    
+    // is meeting done?
+    console.log("meetingEnded, newMeeting.status", newMeeting.status);
+    if (!newMeeting.status.startsWith("END_")) return 0;
 
-      // were coins locked?
-      let coinsLocked = false;
-      for (const status of newStatusList) {
-        if (status.value === "LOCK_COINS_STARTED") {
-          coinsLocked = true;
-          break;
-        }
-      }
-      console.log("meetingEnded, coinsLocked", coinsLocked);
-      if (!coinsLocked) return 0;
 
-      const meetingId = context.params.meetingId;
-      const dataMeeting = change.after.data();
-      const quantities = calcQuantitiesFromData(dataMeeting);
-      console.log("meetingEnded, quantities", quantities);
-      const docRefMeeting = db.collection("meetings").doc(meetingId);
-      return settleMeeting(docRefMeeting, quantities);
-    });
+    if (newMeeting.start === null) {
+      await change.after.ref.update({ isSettled: true });
+      return 0;
+    }
+
+    const meetingId = context.params.meetingId;
+    
+    // were coins locked?
+    if (newMeeting.budget === 0) {
+      await change.after.ref.update({ isSettled: true });
+      return 0;
+    }
+
+    const quantities = calcQuantitiesFromData(newMeeting);
+    console.log("meetingEnded, quantities", quantities);
+    return settleMeeting(change.after.ref, quantities);
+  });
 
 const calcQuantitiesFromData = (data) => {
   const quantities = {
@@ -477,13 +506,7 @@ const calcQuantitiesFromData = (data) => {
     addrB: data.addrB,
   };
 
-  let activeTime = undefined;
-  for (const status of data.status) {
-    if (status.value === "ACTIVE") {
-      activeTime = status.ts;
-      break;
-    }
-  }
+  let activeTime = data.start;
   if (activeTime !== undefined) {
     let endTime = undefined;
     for (const status of data.status) {
@@ -519,15 +542,15 @@ const settleMeeting = async (docRef, quantities) => {
   // update meeting
   const time = Math.floor(new Date().getTime() / 1000);
   await docRef.update({
-    "status": admin.firestore.FieldValue.arrayUnion({value: "SETTLED", ts: time}),
+    "status": admin.firestore.FieldValue.arrayUnion({ value: "SETTLED", ts: time }),
     "txns.unlock": txId,
   });
   console.log("settleMeeting, 3");
 };
 
 const settleALGOMeeting = async (
-    algodclient,
-    quantities,
+  algodclient,
+  quantities,
 ) => {
   console.log("settleALGOMeeting, quantities", quantities);
 
@@ -557,7 +580,7 @@ const settleALGOMeeting = async (
 
   // send
   try {
-    const {txId} = await algodclient.sendRawTransaction([stateTxnSigned]).do();
+    const { txId } = await algodclient.sendRawTransaction([stateTxnSigned]).do();
     console.log("settleALGOMeeting, sent");
 
     // confirm
@@ -573,8 +596,8 @@ const settleALGOMeeting = async (
 };
 
 const settleASAMeeting = async (
-    algodclient,
-    quantities,
+  algodclient,
+  quantities,
 ) => {
   console.log("settleASAMeeting, quantities", quantities);
 
@@ -604,7 +627,7 @@ const settleASAMeeting = async (
 
   // send
   try {
-    const {txId} = await algodclient.sendRawTransaction([stateTxnSigned]).do();
+    const { txId } = await algodclient.sendRawTransaction([stateTxnSigned]).do();
     console.log("settleASAMeeting, sent", txId);
 
     // confirm
@@ -627,7 +650,7 @@ const settleASAMeeting = async (
 // });
 
 // optInToASA({txId: 'QO47JEGJXGRLUKVQ44CKZXQ2X3C4R3JFT22GCUFABNVIC33BZ4AQ', assetId: 23828034})
-exports.optInToASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+exports.optInToASA = functions.runWith({ minInstances: MIN_INSTANCES }).https.onCall(async (data, context) => {
   console.log("optInToASA, data", data);
   await waitForConfirmation(clientTESTNET, data.txId, 5);
   console.log("optInToASA, waitForConfirmation done");
@@ -637,13 +660,13 @@ exports.optInToASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
   // txn confirmed
   const suggestedParams = await clientTESTNET.getTransactionParams().do();
   const optInTxn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(
-      {
-        from: accountCreator.addr,
-        to: accountCreator.addr,
-        assetIndex: data.assetId,
-        amount: 0,
-        suggestedParams,
-      },
+    {
+      from: accountCreator.addr,
+      to: accountCreator.addr,
+      assetIndex: data.assetId,
+      amount: 0,
+      suggestedParams,
+    },
   );
 
   // sign
@@ -652,7 +675,7 @@ exports.optInToASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCa
 
   // send
   try {
-    const {txId} = await clientTESTNET.sendRawTransaction([optInTxnSigned]).do();
+    const { txId } = await clientTESTNET.sendRawTransaction([optInTxnSigned]).do();
     console.log("optInToASA, sent", txId);
 
     // confirm
