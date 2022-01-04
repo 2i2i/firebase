@@ -49,7 +49,7 @@ exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user
   return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
-exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+exports.acceptBidNew = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("data", data);
@@ -114,6 +114,7 @@ exports.acceptBid = functions.runWith({minInstances: MIN_INSTANCES}).https.onCal
       addrB: data.addrB,
       budget: budget,
       start: null,
+      end: null,
       duration: null,
       txns: {
         group: null,
@@ -265,7 +266,7 @@ exports.advanceMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.
     if (status !== "TXN_SIGNED") return 0;
     meetingUpdateDoc.txns = data.txns;
   } else if (newStatus === "TXN_CONFIRMED") {
-    if (status !== "TXN_SIGNED") return 0;
+    if (status !== "TXN_SENT") return 0;
     meetingUpdateDoc.budget = data.budget;
   } else if (newStatus === "ROOM_CREATED") {
     if (A !== uid) return 0;
@@ -384,31 +385,31 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
 //       NOVALUE_ASSET_ID);
 // });
 
-const sendALGO = async (client, fromAccount, toAccount, amount) => {
-  // txn
-  const suggestedParams = await client.getTransactionParams().do();
-  // const note = new Uint8Array(Buffer.from('', 'utf8'));
-  const transactionOptions = {
-    from: fromAccount.addr,
-    to: toAccount.addr,
-    amount,
-    // note,
-    suggestedParams,
-  };
-  const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
-      transactionOptions,
-  );
+// const sendALGO = async (client, fromAccount, toAccount, amount) => {
+//   // txn
+//   const suggestedParams = await client.getTransactionParams().do();
+//   // const note = new Uint8Array(Buffer.from('', 'utf8'));
+//   const transactionOptions = {
+//     from: fromAccount.addr,
+//     to: toAccount.addr,
+//     amount,
+//     // note,
+//     suggestedParams,
+//   };
+//   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
+//       transactionOptions,
+//   );
 
-  // sign
-  const signedTxn = txn.signTxn(fromAccount.sk);
+//   // sign
+//   const signedTxn = txn.signTxn(fromAccount.sk);
 
-  // send raw
-  const {txId} = await client.sendRawTransaction(signedTxn).do();
-  console.log("txId");
-  console.log(txId);
+//   // send raw
+//   const {txId} = await client.sendRawTransaction(signedTxn).do();
+//   console.log("txId");
+//   console.log(txId);
 
-  return txId;
-};
+//   return txId;
+// };
 
 // const optIn = async (client, account, assetIndex) =>
 //   sendASA(client, account, account, 0, assetIndex);
@@ -475,7 +476,8 @@ const settleMeeting = async (docRef, meeting) => {
     if (meeting.speed.assetId === 0) {
       txId = await settleALGOMeeting(clientTESTNET, meeting);
     } else {
-      txId = await settleASAMeeting(clientTESTNET, meeting);
+      // txId = await settleASAMeeting(clientTESTNET, meeting);
+      throw Error("no ASA at the moment");
     }
   }
 
