@@ -2,10 +2,6 @@
 // firebase functions:shell
 // firebase deploy --only functions:ratingAdded
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
-// addBid({B:"hTL94lXgZyRiitgCtwYAJxd2BDE3",speed:{num:4, assetID: 0},net:"testnet",addrA:"addrA"})
-// acceptBid({bid: "ySVM4xCBYssGRImtgzZn", addrB: "addrB"})
-// meetingPaid({meeting: '1JhGOJs2e9uvsr6UWcuA'})
-// endMeeting({meeting: 'i6rP2VTQhkL9zv9P2b5V', endReason: 'TEST'})
 
 const functions = require("firebase-functions");
 const algosdk = require("algosdk");
@@ -25,11 +21,9 @@ const clientTESTNET = new algosdk.Algodv2(
     "",
 );
 
-// const NOVALUE_ASSET_ID = 29147319;
-const SYSTEM_ID = 32969536;
-const MIN_INSTANCES = 1;
+const runWithObj = {minInstances: 0, memory: "128MB"};
 
-exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user().onCreate((user) => {
+exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
   const docRefUser = db.collection("users").doc(user.uid);
   const createUserFuture = docRefUser.create({
     status: "ONLINE",
@@ -49,7 +43,7 @@ exports.userCreated = functions.runWith({minInstances: MIN_INSTANCES}).auth.user
   return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
-exports.acceptBidNew = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+exports.acceptBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
   const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("data", data);
@@ -151,153 +145,7 @@ exports.acceptBidNew = functions.runWith({minInstances: MIN_INSTANCES}).https.on
   });
 });
 
-// every minute
-exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (context) => {
-  const now = Math.floor(new Date().getTime() / 1000);
-  const usersColRef = db.collection("users");
-  const queryRef = usersColRef.where("status", "==", "ONLINE").where("heartbeat", "<", now - 10);
-  const querySnapshot = await queryRef.get();
-  console.log("querySnapshot.size", querySnapshot.size);
-  const promises = [];
-  querySnapshot.forEach(async (queryDocSnapshotUser) => {
-    const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
-    promises.push(p);
-  });
-  await Promise.all(promises);
-});
-
-exports.endMeetingNew = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-  const time = Math.floor(new Date().getTime() / 1000);
-  console.log("endMeeting, data, time", data, time);
-
-  const meetingId = data.meetingId;
-  const docRefMeeting = db.collection("meetings").doc(meetingId);
-
-  if (data.reason !== "END_TIMER" &&
-    data.reason !== "END_A" &&
-    data.reason !== "END_B" &&
-    data.reason !== "END_TXN_FAILED" &&
-    data.reason !== "END_DISCONNECT_A" &&
-    data.reason !== "END_DISCONNECT_B" &&
-    data.reason !== "END_DISCONNECT_AB") return 0;
-
-  return db.runTransaction(async (T) => {
-    const docMeeting = await T.get(docRefMeeting);
-
-    // only A xor B can endMeeting
-    const A = docMeeting.get("A");
-    const B = docMeeting.get("B");
-    if (A !== context.auth.uid && B !== context.auth.uid) return 0;
-
-    const status = docMeeting.get("status");
-    console.log("endMeeting, meetingId, status", meetingId, status);
-
-    if (status.startsWith("END_")) return 0;
-    if (data.reason === "END_TIMER" && status !== "INIT" && status !== "TXN_CREATED" && status !== "CALL_STARTED") return 0; // timer only applies with certain status
-    if (data.reason === "END_A" && (A !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
-    if (data.reason === "END_B" && (B !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
-    if (data.reason === "END_TXN_FAILED" && status !== "TXN_SENT") return 0;
-
-    // newStatus
-    const newStatus = data.reason;
-    const appendToStatusHistory = {value: newStatus, ts: time};
-
-    // update meeting
-    const meetingUpdateDoc = {
-      status: newStatus,
-      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
-      isActive: false,
-      end: time,
-    };
-    const start = docMeeting.get("start");
-    if (start) meetingUpdateDoc.duration = time - start;
-    T.update(docMeeting.ref, meetingUpdateDoc);
-
-    // unlock users
-    const docRefA = db.collection("users").doc(A);
-    const docRefB = db.collection("users").doc(B);
-    T.update(docRefA, {currentMeeting: null, locked: false});
-    T.update(docRefB, {currentMeeting: null, locked: false});
-  });
-});
-
-exports.advanceMeeting = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-  const time = Math.floor(new Date().getTime() / 1000);
-  console.log("advanceMeeting, data, time", data, time);
-
-  const uid = context.auth.uid;
-  const meetingId = data.meetingId;
-  const docRefMeeting = db.collection("meetings").doc(meetingId);
-  const docMeeting = await docRefMeeting.get();
-  const A = docMeeting.get("A");
-  const B = docMeeting.get("B");
-  if (A !== uid && B !== uid) return 0;
-
-  const status = docMeeting.get("status");
-  const newStatus = data.reason;
-  const appendToStatusHistory = {value: newStatus, ts: time};
-  const meetingUpdateDoc = {
-    status: newStatus,
-    statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
-  };
-
-  if (newStatus === "ACCEPTED") {
-    if (A !== uid) return 0;
-    if (status !== "INIT") return 0;
-  } else if (newStatus === "ACCEPTED_FREE_CALL") {
-    if (A !== uid) return 0;
-    if (status !== "INIT") return 0;
-    meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
-        {value: "ACCEPTED", ts: time},
-        {value: "TXN_CREATED", ts: time},
-        {value: "TXN_SIGNED", ts: time},
-        {value: "TXN_SENT", ts: time},
-        {value: "TXN_CONFIRMED", ts: time},
-    );
-    meetingUpdateDoc.status = "TXN_CONFIRMED";
-  } else if (newStatus === "TXN_CREATED") {
-    if (A !== uid) return 0;
-    if (status !== "ACCEPTED") return 0;
-  } else if (newStatus === "TXN_SIGNED") {
-    if (A !== uid) return 0;
-    if (status !== "TXN_CREATED") return 0;
-  } else if (newStatus === "TXN_SENT") {
-    if (A !== uid) return 0;
-    if (status !== "TXN_SIGNED") return 0;
-    meetingUpdateDoc.txns = data.txns;
-  } else if (newStatus === "TXN_CONFIRMED") {
-    if (status !== "TXN_SENT") return 0;
-    meetingUpdateDoc.budget = data.budget;
-  } else if (newStatus === "ROOM_CREATED") {
-    if (A !== uid) return 0;
-    if (status !== "TXN_CONFIRMED") return 0;
-    meetingUpdateDoc.room = data.room;
-  } else if (newStatus === "A_RECEIVED_REMOTE") {
-    if (A !== uid) return 0;
-    if (status === "B_RECEIVED_REMOTE") {
-      meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
-          {value: "A_RECEIVED_REMOTE", ts: time},
-          {value: "CALL_STARTED", ts: time},
-      );
-      meetingUpdateDoc.status = "CALL_STARTED";
-      meetingUpdateDoc.start = time;
-    } else if (status !== "ROOM_CREATED") return 0;
-  } else if (newStatus === "B_RECEIVED_REMOTE") {
-    if (B !== uid) return 0;
-    if (status === "A_RECEIVED_REMOTE") {
-      meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
-          {value: "B_RECEIVED_REMOTE", ts: time},
-          {value: "CALL_STARTED", ts: time},
-      );
-      meetingUpdateDoc.status = "CALL_STARTED";
-      meetingUpdateDoc.start = time;
-    } else if (status !== "ROOM_CREATED") return 0;
-  } else return 0;
-  await docRefMeeting.update(meetingUpdateDoc);
-});
-
-
-exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
+exports.ratingAdded = functions.runWith(runWithObj).firestore
     .document("users/{userId}/ratings/{ratingId}")
     .onCreate((change, context) => {
       const meetingRating = change.get("rating");
@@ -315,6 +163,8 @@ exports.ratingAdded = functions.runWith({minInstances: MIN_INSTANCES}).firestore
         });
       });
     });
+
+const SYSTEM_ID = 32969536;
 
 const waitForConfirmation = async (algodclient, txId, timeout) => {
   if (algodclient == null || txId == null || timeout < 0) {
@@ -358,88 +208,7 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
 };
 
-// exports.giftALGO = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-//   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
-//   console.log("creatorAccount.addr", creatorAccount.addr);
-
-//   const userAccount = {addr: data.account};
-//   console.log("data.account", data.account);
-
-//   return sendALGO(clientTESTNET,
-//       creatorAccount,
-//       userAccount,
-//       1000000);
-// });
-
-// exports.giftASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-//   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
-//   console.log("creatorAccount.addr", creatorAccount.addr);
-
-//   const userAccount = {addr: data.account};
-//   console.log("data.account", data.account);
-
-//   return sendASA(clientTESTNET,
-//       creatorAccount,
-//       userAccount,
-//       1000,
-//       NOVALUE_ASSET_ID);
-// });
-
-// const sendALGO = async (client, fromAccount, toAccount, amount) => {
-//   // txn
-//   const suggestedParams = await client.getTransactionParams().do();
-//   // const note = new Uint8Array(Buffer.from('', 'utf8'));
-//   const transactionOptions = {
-//     from: fromAccount.addr,
-//     to: toAccount.addr,
-//     amount,
-//     // note,
-//     suggestedParams,
-//   };
-//   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
-//       transactionOptions,
-//   );
-
-//   // sign
-//   const signedTxn = txn.signTxn(fromAccount.sk);
-
-//   // send raw
-//   const {txId} = await client.sendRawTransaction(signedTxn).do();
-//   console.log("txId");
-//   console.log(txId);
-
-//   return txId;
-// };
-
-// const optIn = async (client, account, assetIndex) =>
-//   sendASA(client, account, account, 0, assetIndex);
-
-// const sendASA = async (client, fromAccount, toAccount, amount, assetIndex) => {
-//   // txn
-//   const suggestedParams = await client.getTransactionParams().do();
-//   const transactionOptions = {
-//     from: fromAccount.addr,
-//     to: toAccount.addr,
-//     assetIndex,
-//     amount,
-//     suggestedParams,
-//   };
-//   const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(
-//       transactionOptions,
-//   );
-
-//   // sign
-//   const signedTxn = txn.signTxn(fromAccount.sk);
-
-//   // send raw
-//   const {txId} = await client.sendRawTransaction(signedTxn).do();
-//   console.log("txId");
-//   console.log(txId);
-
-//   return txId;
-// };
-
-exports.meetingEndedNew = functions.runWith({minInstances: MIN_INSTANCES}).firestore
+exports.meetingEnded = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onUpdate(async (change, context) => {
       const oldMeeting = change.before.data();
@@ -537,6 +306,239 @@ const settleALGOMeeting = async (
     throw Error(e);
   }
 };
+
+exports.endMeeting = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  const time = Math.floor(new Date().getTime() / 1000);
+  console.log("endMeeting, data, time", data, time);
+
+  const meetingId = data.meetingId;
+  const docRefMeeting = db.collection("meetings").doc(meetingId);
+
+  if (data.reason !== "END_TIMER" &&
+    data.reason !== "END_A" &&
+    data.reason !== "END_B" &&
+    data.reason !== "END_TXN_FAILED" &&
+    data.reason !== "END_DISCONNECT_A" &&
+    data.reason !== "END_DISCONNECT_B" &&
+    data.reason !== "END_DISCONNECT_AB") return 0;
+
+  return db.runTransaction(async (T) => {
+    const docMeeting = await T.get(docRefMeeting);
+
+    // only A xor B can endMeeting
+    const A = docMeeting.get("A");
+    const B = docMeeting.get("B");
+    if (A !== context.auth.uid && B !== context.auth.uid) return 0;
+
+    const status = docMeeting.get("status");
+    console.log("endMeeting, meetingId, status", meetingId, status);
+
+    if (status.startsWith("END_")) return 0;
+    if (data.reason === "END_TIMER" && status !== "INIT" && status !== "TXN_CREATED" && status !== "CALL_STARTED") return 0; // timer only applies with certain status
+    if (data.reason === "END_A" && (A !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "END_B" && (B !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "END_TXN_FAILED" && status !== "TXN_SENT") return 0;
+
+    // newStatus
+    const newStatus = data.reason;
+    const appendToStatusHistory = {value: newStatus, ts: time};
+
+    // update meeting
+    const meetingUpdateDoc = {
+      status: newStatus,
+      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
+      isActive: false,
+      end: time,
+    };
+    const start = docMeeting.get("start");
+    if (start) meetingUpdateDoc.duration = time - start;
+    T.update(docMeeting.ref, meetingUpdateDoc);
+
+    // unlock users
+    const docRefA = db.collection("users").doc(A);
+    const docRefB = db.collection("users").doc(B);
+    T.update(docRefA, {currentMeeting: null, locked: false});
+    T.update(docRefB, {currentMeeting: null, locked: false});
+  });
+});
+
+// every minute
+exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (context) => {
+  const now = Math.floor(new Date().getTime() / 1000);
+  const usersColRef = db.collection("users");
+  const queryRef = usersColRef.where("status", "==", "ONLINE").where("heartbeat", "<", now - 10);
+  const querySnapshot = await queryRef.get();
+  console.log("querySnapshot.size", querySnapshot.size);
+  const promises = [];
+  querySnapshot.forEach(async (queryDocSnapshotUser) => {
+    const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
+    promises.push(p);
+  });
+  await Promise.all(promises);
+});
+
+exports.advanceMeeting = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  const time = Math.floor(new Date().getTime() / 1000);
+  console.log("advanceMeeting, data, time", data, time);
+
+  const uid = context.auth.uid;
+  const meetingId = data.meetingId;
+  const docRefMeeting = db.collection("meetings").doc(meetingId);
+  const docMeeting = await docRefMeeting.get();
+  const A = docMeeting.get("A");
+  const B = docMeeting.get("B");
+  if (A !== uid && B !== uid) return 0;
+
+  const status = docMeeting.get("status");
+  const newStatus = data.reason;
+  const appendToStatusHistory = {value: newStatus, ts: time};
+  const meetingUpdateDoc = {
+    status: newStatus,
+    statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
+  };
+
+  if (newStatus === "ACCEPTED") {
+    if (A !== uid) return 0;
+    if (status !== "INIT") return 0;
+  } else if (newStatus === "ACCEPTED_FREE_CALL") {
+    if (A !== uid) return 0;
+    if (status !== "INIT") return 0;
+    meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
+        {value: "ACCEPTED", ts: time},
+        {value: "TXN_CREATED", ts: time},
+        {value: "TXN_SIGNED", ts: time},
+        {value: "TXN_SENT", ts: time},
+        {value: "TXN_CONFIRMED", ts: time},
+    );
+    meetingUpdateDoc.status = "TXN_CONFIRMED";
+  } else if (newStatus === "TXN_CREATED") {
+    if (A !== uid) return 0;
+    if (status !== "ACCEPTED") return 0;
+  } else if (newStatus === "TXN_SIGNED") {
+    if (A !== uid) return 0;
+    if (status !== "TXN_CREATED") return 0;
+  } else if (newStatus === "TXN_SENT") {
+    if (A !== uid) return 0;
+    if (status !== "TXN_SIGNED") return 0;
+    meetingUpdateDoc.txns = data.txns;
+  } else if (newStatus === "TXN_CONFIRMED") {
+    if (status !== "TXN_SENT") return 0;
+    meetingUpdateDoc.budget = data.budget;
+  } else if (newStatus === "ROOM_CREATED") {
+    if (A !== uid) return 0;
+    if (status !== "TXN_CONFIRMED") return 0;
+    meetingUpdateDoc.room = data.room;
+  } else if (newStatus === "A_RECEIVED_REMOTE") {
+    if (A !== uid) return 0;
+    if (status === "B_RECEIVED_REMOTE") {
+      meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
+          {value: "A_RECEIVED_REMOTE", ts: time},
+          {value: "CALL_STARTED", ts: time},
+      );
+      meetingUpdateDoc.status = "CALL_STARTED";
+      meetingUpdateDoc.start = time;
+    } else if (status !== "ROOM_CREATED") return 0;
+  } else if (newStatus === "B_RECEIVED_REMOTE") {
+    if (B !== uid) return 0;
+    if (status === "A_RECEIVED_REMOTE") {
+      meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
+          {value: "B_RECEIVED_REMOTE", ts: time},
+          {value: "CALL_STARTED", ts: time},
+      );
+      meetingUpdateDoc.status = "CALL_STARTED";
+      meetingUpdateDoc.start = time;
+    } else if (status !== "ROOM_CREATED") return 0;
+  } else return 0;
+  await docRefMeeting.update(meetingUpdateDoc);
+});
+
+exports.topMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  const querySnapshot = await db.collection("meetings").get();
+  return querySnapshot.docs.map((doc) => doc.data());
+});
+
+// const NOVALUE_ASSET_ID = 29147319;
+
+// exports.giftALGO = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+//   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
+//   console.log("creatorAccount.addr", creatorAccount.addr);
+
+//   const userAccount = {addr: data.account};
+//   console.log("data.account", data.account);
+
+//   return sendALGO(clientTESTNET,
+//       creatorAccount,
+//       userAccount,
+//       1000000);
+// });
+
+// exports.giftASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
+//   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
+//   console.log("creatorAccount.addr", creatorAccount.addr);
+
+//   const userAccount = {addr: data.account};
+//   console.log("data.account", data.account);
+
+//   return sendASA(clientTESTNET,
+//       creatorAccount,
+//       userAccount,
+//       1000,
+//       NOVALUE_ASSET_ID);
+// });
+
+// const sendALGO = async (client, fromAccount, toAccount, amount) => {
+//   // txn
+//   const suggestedParams = await client.getTransactionParams().do();
+//   // const note = new Uint8Array(Buffer.from('', 'utf8'));
+//   const transactionOptions = {
+//     from: fromAccount.addr,
+//     to: toAccount.addr,
+//     amount,
+//     // note,
+//     suggestedParams,
+//   };
+//   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
+//       transactionOptions,
+//   );
+
+//   // sign
+//   const signedTxn = txn.signTxn(fromAccount.sk);
+
+//   // send raw
+//   const {txId} = await client.sendRawTransaction(signedTxn).do();
+//   console.log("txId");
+//   console.log(txId);
+
+//   return txId;
+// };
+
+// const optIn = async (client, account, assetIndex) =>
+//   sendASA(client, account, account, 0, assetIndex);
+
+// const sendASA = async (client, fromAccount, toAccount, amount, assetIndex) => {
+//   // txn
+//   const suggestedParams = await client.getTransactionParams().do();
+//   const transactionOptions = {
+//     from: fromAccount.addr,
+//     to: toAccount.addr,
+//     assetIndex,
+//     amount,
+//     suggestedParams,
+//   };
+//   const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(
+//       transactionOptions,
+//   );
+
+//   // sign
+//   const signedTxn = txn.signTxn(fromAccount.sk);
+
+//   // send raw
+//   const {txId} = await client.sendRawTransaction(signedTxn).do();
+//   console.log("txId");
+//   console.log(txId);
+
+//   return txId;
+// };
 
 // const settleASAMeeting = async (
 //     algodclient,
