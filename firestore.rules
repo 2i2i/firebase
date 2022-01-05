@@ -61,9 +61,9 @@ service cloud.firestore {
     // a user could spam and create multiple ratings for the same meeting
     // they could have easily created the same correct one from the beginning
     // TODO: how to mitigate that?
-    match /users/{userId}/ratings/{ratingId} {
+    match /users/{userId}/ratings/{meetingId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid != userId && 'rating' in request.resource.data && 'comment' in request.resource.data && isAOrB(get(/databases/$(database)/documents/meetings/$(request.resource.data.meeting)).data);
+      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.keys().toSet() == ['rating', 'comment'].toSet() && isAOrB(get(/databases/$(database)/documents/meetings/$(meetingId)).data);
     }
   }
 }
