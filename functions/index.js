@@ -458,26 +458,37 @@ exports.topDurationMeetings = functions.runWith(runWithObj).https.onCall(async (
 exports.topSpeedMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => topMeetings("speed.num"));
 const topMeetings = async (order) => {
   const querySnapshot = await db
-    .collection("meetings")
-    .where("isSettled", "==", true)
-    .where("speed.assetId", "==", 0)
-    .orderBy(order, "desc")
-    .limit(10)
-    .get();
+      .collection("meetings")
+      .where("isSettled", "==", true)
+      .where("speed.assetId", "==", 0)
+      .orderBy(order, "desc")
+      .limit(10)
+      .get();
 
-  return querySnapshot.docs.map((doc) => {
+
+  const topMeetings = querySnapshot.docs.map((doc) => {
     const data = doc.data();
     const B = data.B;
     const duration = data.duration;
     const speed = data.speed;
     const start = data.start;
     return {
+      id: doc.id,
       B: B,
       start: start,
       duration: duration,
       speed: speed,
     };
   });
+
+  const futures = topMeetings.map((topMeeting) => {
+    return db.collection("users").doc(topMeeting.B).get().then((user) => {
+      topMeeting.name = user.get("name");
+      return topMeeting;
+    });
+  });
+
+  return Promise.all(futures);
 };
 
 // const NOVALUE_ASSET_ID = 29147319;
