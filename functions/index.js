@@ -23,6 +23,8 @@ const clientTESTNET = new algosdk.Algodv2(
 
 const runWithObj = {minInstances: 0, memory: "128MB"};
 
+exports.test = functions.runWith(runWithObj).https.onCall(async (data, context) => { });
+
 exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
   const docRefUser = db.collection("users").doc(user.uid);
   const createUserFuture = docRefUser.create({
@@ -452,10 +454,31 @@ exports.advanceMeeting = functions.runWith(runWithObj).https.onCall(async (data,
   await docRefMeeting.update(meetingUpdateDoc);
 });
 
-exports.topMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => {
-  const querySnapshot = await db.collection("meetings").get();
-  return querySnapshot.docs.map((doc) => doc.data());
-});
+exports.topDurationMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => topMeetings("duration"));
+exports.topSpeedMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => topMeetings("speed.num"));
+const topMeetings = async (order) => {
+  const querySnapshot = await db
+    .collection("meetings")
+    .where("isSettled", "==", true)
+    .where("speed.assetId", "==", 0)
+    .orderBy(order, "desc")
+    .limit(10)
+    .get();
+
+  return querySnapshot.docs.map((doc) => {
+    const data = doc.data();
+    const B = data.B;
+    const duration = data.duration;
+    const speed = data.speed;
+    const start = data.start;
+    return {
+      B: B,
+      start: start,
+      duration: duration,
+      speed: speed,
+    };
+  });
+};
 
 // const NOVALUE_ASSET_ID = 29147319;
 
