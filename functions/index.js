@@ -43,10 +43,12 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
 });
 
 exports.acceptBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  const uid = context.auth.uid;
+  if (!uid) return;
+
   const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("data", data);
-  const uid = context.auth.uid;
   const bidB = uid;
   console.log("uid", uid);
 
@@ -304,7 +306,10 @@ const settleALGOMeeting = async (
   }
 };
 
-exports.endMeeting = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+const endMeetingInternal = async (data, context) => {
+  const uid = context.auth.uid;
+  if (!uid) return;
+
   const time = Math.floor(new Date().getTime() / 1000);
   console.log("endMeeting, data, time", data, time);
 
@@ -323,15 +328,15 @@ exports.endMeeting = functions.runWith(runWithObj).https.onCall(async (data, con
     // only A xor B can endMeeting
     const A = docMeeting.get("A");
     const B = docMeeting.get("B");
-    if (A !== context.auth.uid && B !== context.auth.uid) return 0;
+    if (A !== uid && B !== uid) return 0;
 
     const status = docMeeting.get("status");
     console.log("endMeeting, meetingId, status", meetingId, status);
 
     if (status.startsWith("END_")) return 0;
     if (data.reason === "END_TIMER" && status !== "INIT" && status !== "TXN_CREATED" && status !== "CALL_STARTED") return 0; // timer only applies with certain status
-    if (data.reason === "END_A" && (A !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
-    if (data.reason === "END_B" && (B !== context.auth.uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "END_A" && (A !== uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
+    if (data.reason === "END_B" && (B !== uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
     if (data.reason === "END_TXN_FAILED" && status !== "TXN_SENT") return 0;
 
     // newStatus
@@ -355,10 +360,12 @@ exports.endMeeting = functions.runWith(runWithObj).https.onCall(async (data, con
     T.update(docRefA, {meeting: null});
     T.update(docRefB, {meeting: null});
   });
-});
+};
+exports.endMeeting = functions.runWith(runWithObj).https.onCall(endMeetingInternal);
 
 // every minute
 exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (context) => {
+  console.log("context", context);
   const now = Math.floor(new Date().getTime() / 1000);
   const usersColRef = db.collection("users");
   const queryRef = usersColRef.where("status", "==", "ONLINE").where("heartbeat", "<", now - 10);
@@ -370,7 +377,7 @@ exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (co
     promises.push(p);
     const meeting = queryDocSnapshotUser.get("meeting");
     if (meeting) {
-      const p2 = module.endMeeting({meetingId: meeting, reason: "END_DISCONNECT"}, context);
+      const p2 = endMeetingInternal({meetingId: meeting, reason: "END_DISCONNECT"}, {auth: {uid: queryDocSnapshotUser.id}});
       promises.push(p2);
     }
   });
@@ -378,10 +385,12 @@ exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (co
 });
 
 exports.advanceMeeting = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  const uid = context.auth.uid;
+  if (!uid) return;
+
   const time = Math.floor(new Date().getTime() / 1000);
   console.log("advanceMeeting, data, time", data, time);
 
-  const uid = context.auth.uid;
   const meetingId = data.meetingId;
   const docRefMeeting = db.collection("meetings").doc(meetingId);
   const docMeeting = await docRefMeeting.get();

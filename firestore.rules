@@ -22,7 +22,7 @@ service cloud.firestore {
       
       // only self user can write
       // resource.data.meeting != null to avoid heartbeats of users that do not exist anymore
-      allow write: if request.auth != null && request.auth.uid == userId && resource.data.meeting != null;
+      allow write: if request.auth != null && request.auth.uid == userId && resource.data.keys().hasAll(['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeat', 'tags']);
 
     }
 
