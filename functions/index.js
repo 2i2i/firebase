@@ -21,16 +21,13 @@ const clientTESTNET = new algosdk.Algodv2(
     "",
 );
 
-const runWithObj = {minInstances: 0, memory: "128MB"};
-
-exports.test = functions.runWith(runWithObj).https.onCall(async (data, context) => { });
+const runWithObj = {minInstances: 1, memory: "128MB"};
 
 exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
   const docRefUser = db.collection("users").doc(user.uid);
   const createUserFuture = docRefUser.create({
     status: "ONLINE",
-    locked: false,
-    currentMeeting: null,
+    meeting: null,
     bio: "",
     name: "",
     rating: 1,
@@ -92,12 +89,12 @@ exports.acceptBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     const docABResults = await Promise.all([docAFuture, docBFuture]);
     const docA = docABResults[0];
     const docB = docABResults[1];
-    const lockedA = docA.get("locked");
-    const lockedB = docB.get("locked");
-    console.log("lockedA", lockedA);
-    console.log("lockedB", lockedB);
-    if (lockedA === true) throw Error("A.locked === true");
-    if (lockedB === true) throw Error("B.locked === true");
+    const meetingA = docA.get("meeting");
+    const meetingB = docB.get("meeting");
+    console.log("meetingA", meetingA);
+    console.log("meetingB", meetingB);
+    if (meetingA) throw Error("meetingA");
+    if (meetingB) throw Error("meetingB");
 
     // create meeting
     const docRefMeeting = db.collection("meetings").doc();
@@ -133,12 +130,10 @@ exports.acceptBid = functions.runWith(runWithObj).https.onCall(async (data, cont
 
     // lock
     T.update(docRefA, {
-      locked: true,
-      currentMeeting: docRefMeeting.id,
+      meeting: docRefMeeting.id,
     });
     T.update(docRefB, {
-      locked: true,
-      currentMeeting: docRefMeeting.id,
+      meeting: docRefMeeting.id,
     });
 
     // bids are not active anymore
@@ -320,9 +315,7 @@ exports.endMeeting = functions.runWith(runWithObj).https.onCall(async (data, con
     data.reason !== "END_A" &&
     data.reason !== "END_B" &&
     data.reason !== "END_TXN_FAILED" &&
-    data.reason !== "END_DISCONNECT_A" &&
-    data.reason !== "END_DISCONNECT_B" &&
-    data.reason !== "END_DISCONNECT_AB") return 0;
+    data.reason !== "END_DISCONNECT") return 0;
 
   return db.runTransaction(async (T) => {
     const docMeeting = await T.get(docRefMeeting);
@@ -359,8 +352,8 @@ exports.endMeeting = functions.runWith(runWithObj).https.onCall(async (data, con
     // unlock users
     const docRefA = db.collection("users").doc(A);
     const docRefB = db.collection("users").doc(B);
-    T.update(docRefA, {currentMeeting: null, locked: false});
-    T.update(docRefB, {currentMeeting: null, locked: false});
+    T.update(docRefA, {meeting: null});
+    T.update(docRefB, {meeting: null});
   });
 });
 
@@ -375,6 +368,11 @@ exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (co
   querySnapshot.forEach(async (queryDocSnapshotUser) => {
     const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
     promises.push(p);
+    const meeting = queryDocSnapshotUser.get("meeting");
+    if (meeting) {
+      const p2 = module.endMeeting({meetingId: meeting, reason: "END_DISCONNECT"}, context);
+      promises.push(p2);
+    }
   });
   await Promise.all(promises);
 });

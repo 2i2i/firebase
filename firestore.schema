@@ -8,8 +8,7 @@
   users: [ // read all, private if user itself // collection
     id-> { // doc // write: self // read: all
       status: 'OFFLINE', // OFFLINE/ONLINE
-      locked: false, // can be set by targets of bidsOut
-      currentMeeting: null, // meeting id
+      meeting: null, // meeting id
       bidsIn: [], // array of bid ids
       
       bio: null,
