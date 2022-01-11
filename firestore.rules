@@ -57,6 +57,47 @@ service cloud.firestore {
       allow read, write: if request.auth != null && subCollectionId.matches('.*' + request.auth.uid + '.*');
     }
 
+    // end meeting
+    function isEndReason() {
+      return request.resource.data.status == 'END_TIMER' || 
+             request.resource.data.status == 'END_A' || 
+             request.resource.data.status == 'END_B' || 
+             request.resource.data.status == 'END_TXN_FAILED' || 
+             request.resource.data.status == 'END_DISCONNECT';
+    }
+    function alreadyEnded() {
+      return resource.data.status.matches('END_*');
+    }
+    function isCorrectEndPath() {
+      return (request.resource.data.status == 'END_TIMER' && (resource.data.status == 'INIT' || resource.data.status == 'TXN_CREATED' || resource.data.status == 'CALL_STARTED')) ||
+             (request.resource.data.status == 'END_A' && request.auth.uid == resource.data.A && (resource.data.status == 'INIT' || resource.data.status == 'CALL_STARTED')) ||
+             (request.resource.data.status == 'END_B' && request.auth.uid == resource.data.B && (resource.data.status == 'INIT' || resource.data.status == 'CALL_STARTED')) ||
+             (request.resource.data.status == 'END_TXN_FAILED' && resource.data.status == 'TXN_SENT')
+    }
+    function hasCorrectFieldsForEnd() {
+      let k = request.resource.data.diff(resource.data).affectedKeys();
+      return k.hasAll(['status', 'statusHistory', 'isActive', 'end']) &&
+            k.hasOnly(['status', 'statusHistory', 'isActive', 'end', 'duration']);
+    }
+    function isEnd() {
+      return !alreadyEnded() && isEndReason() && isCorrectEndPath() && hasCorrectFieldsForEnd();
+    }
+    function isAdvance() {
+      let k = request.resource.data.diff(resource.data).affectedKeys();
+      return (request.resource.data.status == 'ACCEPTED' && request.auth.uid == resource.data.A && resource.data.status == 'INIT' && k.hasOnly(['status', 'statusHistory'])) ||
+             (request.resource.data.status == 'TXN_CONFIRMED' && request.auth.uid == resource.data.A && resource.data.status == 'INIT' && resource.data.speed.num == 0 && k.hasOnly(['status', 'statusHistory'])) ||
+             (request.resource.data.status == 'TXN_CREATED' && request.auth.uid == resource.data.A && resource.data.status == 'ACCEPTED' && k.hasOnly(['status', 'statusHistory'])) ||
+             (request.resource.data.status == 'TXN_SIGNED' && request.auth.uid == resource.data.A && resource.data.status == 'TXN_CREATED' && k.hasOnly(['status', 'statusHistory'])) ||
+             (request.resource.data.status == 'TXN_SENT' && request.auth.uid == resource.data.A && resource.data.status == 'TXN_SIGNED' && k.hasAll(['status', 'statusHistory', 'txns'])) ||
+             (request.resource.data.status == 'TXN_CONFIRMED' && resource.data.status == 'TXN_SENT' && k.hasAll(['status', 'statusHistory', 'budget'])) ||
+             (request.resource.data.status == 'ROOM_CREATED' && request.auth.uid == resource.data.A && resource.data.status == 'TXN_CONFIRMED' && k.hasAll(['status', 'statusHistory', 'room'])) ||
+             (request.resource.data.status == 'A_RECEIVED_REMOTE' && request.auth.uid == resource.data.A && (resource.data.status == 'ROOM_CREATED' || resource.data.status == 'B_RECEIVED_REMOTE')) ||
+             (request.resource.data.status == 'B_RECEIVED_REMOTE' && request.auth.uid == resource.data.B && (resource.data.status == 'ROOM_CREATED' || resource.data.status == 'A_RECEIVED_REMOTE'));
+    }
+    match /meetings/{meetingId} {
+      allow update: if request.auth != null && isAOrB(resource.data) && (isEnd() || isAdvance());
+    }
+
     // ratings
     // a user could spam and create multiple ratings for the same meeting
     // they could have easily created the same correct one from the beginning

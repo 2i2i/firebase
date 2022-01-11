@@ -32,7 +32,7 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
     name: "",
     rating: 1,
     numRatings: 0,
-    heartbeat: 0,
+    heartbeat: admin.firestore.FieldValue.serverTimestamp(),
     tags: [],
   });
   const createUserPrivateFuture = docRefUser.collection("private").doc("main").create({
@@ -43,10 +43,15 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
 });
 
 exports.acceptBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  // context.app will be undefined if the request doesn't include a valid
+  // App Check token.
+  if (context.app == undefined) {
+    throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The function must be called from an App Check verified app.");
+  }
   const uid = context.auth.uid;
   if (!uid) return;
-
-  const time = Math.floor(new Date().getTime() / 1000);
 
   console.log("data", data);
   const bidB = uid;
@@ -120,7 +125,7 @@ exports.acceptBid = functions.runWith(runWithObj).https.onCall(async (data, cont
         optIn: null,
       },
       status: "INIT",
-      statusHistory: [{value: "INIT", ts: time}],
+      statusHistory: [{value: "INIT", ts: admin.firestore.FieldValue.serverTimestamp()}],
       net: bidInNet,
       speed: bidInSpeed,
       bid: data.bid,
@@ -207,29 +212,52 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
 };
 
-exports.meetingEnded = functions.runWith(runWithObj).firestore
+exports.meetingUpdated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onUpdate(async (change, context) => {
       const oldMeeting = change.before.data();
       const newMeeting = change.after.data();
 
       // has status changed?
-      console.log("meetingEnded, oldMeeting.status", oldMeeting.status);
+      console.log("meetingUpdated, oldMeeting.status", oldMeeting.status);
       if (oldMeeting.status === newMeeting.status) return 0;
 
+      if ((newMeeting.status === "A_RECEIVED_REMOTE" && oldMeeting.status == "B_RECEIVED_REMOTE") ||
+           newMeeting.status === "B_RECEIVED_REMOTE" && oldMeeting.status == "A_RECEIVED_REMOTE") {
+        return change.after.ref.update({
+          start: admin.firestore.FieldValue.serverTimestamp(),
+          status: "CALL_STARTED",
+          statusHistory: admin.firestore.FieldValue.arrayUnion({
+            value: "CALL_STARTED",
+            ts: admin.firestore.FieldValue.serverTimestamp(),
+          }),
+        });
+      }
+
       // is meeting done?
-      console.log("meetingEnded, newMeeting.status", newMeeting.status);
+      console.log("meetingUpdated, newMeeting.status", newMeeting.status);
       if (!newMeeting.status.startsWith("END_")) return 0;
+
+      const colRef = db.collection("users");
+      const A = newMeeting.A;
+      const B = newMeeting.B;
+      const docRefA = colRef.doc(A);
+      const docRefB = colRef.doc(B);
+      const unlockAPromise = docRefA.update({meeting: null});
+      const unlockBPromise = docRefB.update({meeting: null});
+      await Promise.all([unlockAPromise, unlockBPromise]);
 
       // if meeting never started, nothing to settle
       if (newMeeting.start === null) {
         return 0;
       }
+      const start = (new Date(newMeeting.start)).get.getTime();
+      const end = (new Date(newMeeting.end)).getTime();
+      newMeeting.duration = Math.round((end - start) / 1000);
 
       // were coins locked?
       if (newMeeting.budget === 0) {
-        await change.after.ref.update({isSettled: true});
-        return 0;
+        return change.after.ref.update({isSettled: true, duration: newMeeting.duration});
       }
 
       return settleMeeting(change.after.ref, newMeeting);
@@ -252,11 +280,11 @@ const settleMeeting = async (docRef, meeting) => {
   console.log("settleMeeting, txId", txId);
 
   // update meeting
-  await docRef.update({
+  return docRef.update({
     "txns.unlock": txId,
     "isSettled": true,
+    "duration": meeting.duration,
   });
-  console.log("settleMeeting, 3");
 };
 
 const settleALGOMeeting = async (
@@ -306,69 +334,13 @@ const settleALGOMeeting = async (
   }
 };
 
-const endMeetingInternal = async (data, context) => {
-  const uid = context.auth.uid;
-  if (!uid) return;
-
-  const time = Math.floor(new Date().getTime() / 1000);
-  console.log("endMeeting, data, time", data, time);
-
-  const meetingId = data.meetingId;
-  const docRefMeeting = db.collection("meetings").doc(meetingId);
-
-  if (data.reason !== "END_TIMER" &&
-    data.reason !== "END_A" &&
-    data.reason !== "END_B" &&
-    data.reason !== "END_TXN_FAILED" &&
-    data.reason !== "END_DISCONNECT") return 0;
-
-  return db.runTransaction(async (T) => {
-    const docMeeting = await T.get(docRefMeeting);
-
-    // only A xor B can endMeeting
-    const A = docMeeting.get("A");
-    const B = docMeeting.get("B");
-    if (A !== uid && B !== uid) return 0;
-
-    const status = docMeeting.get("status");
-    console.log("endMeeting, meetingId, status", meetingId, status);
-
-    if (status.startsWith("END_")) return 0;
-    if (data.reason === "END_TIMER" && status !== "INIT" && status !== "TXN_CREATED" && status !== "CALL_STARTED") return 0; // timer only applies with certain status
-    if (data.reason === "END_A" && (A !== uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
-    if (data.reason === "END_B" && (B !== uid || (status !== "INIT" && status !== "CALL_STARTED"))) return 0;
-    if (data.reason === "END_TXN_FAILED" && status !== "TXN_SENT") return 0;
-
-    // newStatus
-    const newStatus = data.reason;
-    const appendToStatusHistory = {value: newStatus, ts: time};
-
-    // update meeting
-    const meetingUpdateDoc = {
-      status: newStatus,
-      statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
-      isActive: false,
-      end: time,
-    };
-    const start = docMeeting.get("start");
-    if (start) meetingUpdateDoc.duration = time - start;
-    T.update(docMeeting.ref, meetingUpdateDoc);
-
-    // unlock users
-    const docRefA = db.collection("users").doc(A);
-    const docRefB = db.collection("users").doc(B);
-    T.update(docRefA, {meeting: null});
-    T.update(docRefB, {meeting: null});
-  });
-};
-exports.endMeeting = functions.runWith(runWithObj).https.onCall(endMeetingInternal);
-
 // every minute
 exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (context) => {
   console.log("context", context);
-  const now = Math.floor(new Date().getTime() / 1000);
+  const T = new Date();
+  T.setSeconds(T.getSeconds() - 10);
   const usersColRef = db.collection("users");
-  const queryRef = usersColRef.where("status", "==", "ONLINE").where("heartbeat", "<", now - 10);
+  const queryRef = usersColRef.where("status", "==", "ONLINE").where("heartbeat", "<", T);
   const querySnapshot = await queryRef.get();
   console.log("querySnapshot.size", querySnapshot.size);
   const promises = [];
@@ -377,97 +349,53 @@ exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (co
     promises.push(p);
     const meeting = queryDocSnapshotUser.get("meeting");
     if (meeting) {
-      const p2 = endMeetingInternal({meetingId: meeting, reason: "END_DISCONNECT"}, {auth: {uid: queryDocSnapshotUser.id}});
-      promises.push(p2);
+      const time = admin.firestore.FieldValue.serverTimestamp();
+      const meetingObj = {
+        status: "END_DISCONNECT",
+        statusHistory: admin.firestore.FieldValue.arrayUnion({value: "END_DISCONNECT", ts: time}),
+        isActive: false,
+        end: time,
+      };
+      const meetingDocRef = db.collection("meetings").doc(meeting);
+      const meetingPromise = meetingDocRef.update(meetingObj);
+      promises.push(meetingPromise);
     }
   });
   await Promise.all(promises);
 });
 
-exports.advanceMeeting = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+exports.topDurationMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  // context.app will be undefined if the request doesn't include a valid
+  // App Check token.
+  if (context.app == undefined) {
+    throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The function must be called from an App Check verified app.");
+  }
   const uid = context.auth.uid;
   if (!uid) return;
 
-  const time = Math.floor(new Date().getTime() / 1000);
-  console.log("advanceMeeting, data, time", data, time);
-
-  const meetingId = data.meetingId;
-  const docRefMeeting = db.collection("meetings").doc(meetingId);
-  const docMeeting = await docRefMeeting.get();
-  const A = docMeeting.get("A");
-  const B = docMeeting.get("B");
-  if (A !== uid && B !== uid) return 0;
-
-  const status = docMeeting.get("status");
-  const newStatus = data.reason;
-  const appendToStatusHistory = {value: newStatus, ts: time};
-  const meetingUpdateDoc = {
-    status: newStatus,
-    statusHistory: admin.firestore.FieldValue.arrayUnion(appendToStatusHistory),
-  };
-
-  if (newStatus === "ACCEPTED") {
-    if (A !== uid) return 0;
-    if (status !== "INIT") return 0;
-  } else if (newStatus === "ACCEPTED_FREE_CALL") {
-    if (A !== uid) return 0;
-    if (status !== "INIT") return 0;
-    meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
-        {value: "ACCEPTED", ts: time},
-        {value: "TXN_CREATED", ts: time},
-        {value: "TXN_SIGNED", ts: time},
-        {value: "TXN_SENT", ts: time},
-        {value: "TXN_CONFIRMED", ts: time},
-    );
-    meetingUpdateDoc.status = "TXN_CONFIRMED";
-  } else if (newStatus === "TXN_CREATED") {
-    if (A !== uid) return 0;
-    if (status !== "ACCEPTED") return 0;
-  } else if (newStatus === "TXN_SIGNED") {
-    if (A !== uid) return 0;
-    if (status !== "TXN_CREATED") return 0;
-  } else if (newStatus === "TXN_SENT") {
-    if (A !== uid) return 0;
-    if (status !== "TXN_SIGNED") return 0;
-    meetingUpdateDoc.txns = data.txns;
-  } else if (newStatus === "TXN_CONFIRMED") {
-    if (status !== "TXN_SENT") return 0;
-    meetingUpdateDoc.budget = data.budget;
-  } else if (newStatus === "ROOM_CREATED") {
-    if (A !== uid) return 0;
-    if (status !== "TXN_CONFIRMED") return 0;
-    meetingUpdateDoc.room = data.room;
-  } else if (newStatus === "A_RECEIVED_REMOTE") {
-    if (A !== uid) return 0;
-    if (status === "B_RECEIVED_REMOTE") {
-      meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
-          {value: "A_RECEIVED_REMOTE", ts: time},
-          {value: "CALL_STARTED", ts: time},
-      );
-      meetingUpdateDoc.status = "CALL_STARTED";
-      meetingUpdateDoc.start = time;
-    } else if (status !== "ROOM_CREATED") return 0;
-  } else if (newStatus === "B_RECEIVED_REMOTE") {
-    if (B !== uid) return 0;
-    if (status === "A_RECEIVED_REMOTE") {
-      meetingUpdateDoc.statusHistory = admin.firestore.FieldValue.arrayUnion(
-          {value: "B_RECEIVED_REMOTE", ts: time},
-          {value: "CALL_STARTED", ts: time},
-      );
-      meetingUpdateDoc.status = "CALL_STARTED";
-      meetingUpdateDoc.start = time;
-    } else if (status !== "ROOM_CREATED") return 0;
-  } else return 0;
-  await docRefMeeting.update(meetingUpdateDoc);
+  return topMeetings("duration");
 });
+exports.topSpeedMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  // context.app will be undefined if the request doesn't include a valid
+  // App Check token.
+  if (context.app == undefined) {
+    throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The function must be called from an App Check verified app.");
+  }
+  const uid = context.auth.uid;
+  if (!uid) return;
 
-exports.topDurationMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => topMeetings("duration"));
-exports.topSpeedMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => topMeetings("speed.num"));
+  return topMeetings("speed.num");
+});
 const topMeetings = async (order) => {
   const querySnapshot = await db
       .collection("meetings")
       .where("isSettled", "==", true)
       .where("speed.assetId", "==", 0)
+      .select(["B", "duration", "speed"])
       .orderBy(order, "desc")
       .limit(10)
       .get();
@@ -478,11 +406,9 @@ const topMeetings = async (order) => {
     const B = data.B;
     const duration = data.duration;
     const speed = data.speed;
-    const start = data.start;
     return {
       id: doc.id,
       B: B,
-      start: start,
       duration: duration,
       speed: speed,
     };
