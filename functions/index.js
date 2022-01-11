@@ -125,7 +125,7 @@ exports.acceptBid = functions.runWith(runWithObj).https.onCall(async (data, cont
         optIn: null,
       },
       status: "INIT",
-      statusHistory: [{value: "INIT", ts: admin.firestore.FieldValue.serverTimestamp()}],
+      statusHistory: [{value: "INIT", ts: admin.firestore.Timestamp.now()}],
       net: bidInNet,
       speed: bidInSpeed,
       bid: data.bid,
@@ -229,7 +229,7 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore
           status: "CALL_STARTED",
           statusHistory: admin.firestore.FieldValue.arrayUnion({
             value: "CALL_STARTED",
-            ts: admin.firestore.FieldValue.serverTimestamp(),
+            ts: admin.firestore.Timestamp.now(),
           }),
         });
       }
@@ -345,16 +345,17 @@ exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (co
   console.log("querySnapshot.size", querySnapshot.size);
   const promises = [];
   querySnapshot.forEach(async (queryDocSnapshotUser) => {
+    console.log("queryDocSnapshotUser.id", queryDocSnapshotUser.id);
     const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
     promises.push(p);
     const meeting = queryDocSnapshotUser.get("meeting");
+    console.log("meeting", meeting);
     if (meeting) {
-      const time = admin.firestore.FieldValue.serverTimestamp();
       const meetingObj = {
         status: "END_DISCONNECT",
-        statusHistory: admin.firestore.FieldValue.arrayUnion({value: "END_DISCONNECT", ts: time}),
+        statusHistory: admin.firestore.FieldValue.arrayUnion({value: "END_DISCONNECT", ts: admin.firestore.Timestamp.now()}),
         isActive: false,
-        end: time,
+        end: admin.firestore.FieldValue.serverTimestamp(),
       };
       const meetingDocRef = db.collection("meetings").doc(meeting);
       const meetingPromise = meetingDocRef.update(meetingObj);
