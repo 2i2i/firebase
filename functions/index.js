@@ -50,15 +50,10 @@ exports.ratingAdded = functions.runWith(runWithObj).firestore
       return db.runTransaction(async (T) => {
         const docRefUser = db.collection("users").doc(userId);
         const docUser = await docRefUser.get();
-        const numRatings = docUser.numRatings ?? 0;
-        console.log("numRatings", numRatings);
-        const userRating = docUser.rating ?? 1;
-        console.log("userRating", userRating);
+        const numRatings = docUser.get("numRatings") ?? 0;
+        const userRating = docUser.get("rating") ?? 1;
         const newNumRatings = numRatings + 1;
-        console.log("newNumRatings", newNumRatings);
-        console.log("meetingRating", meetingRating);
         const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
-        console.log("newRating", newRating);
         await docRefUser.update({
           rating: newRating,
           numRatings: newNumRatings,
