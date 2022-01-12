@@ -339,6 +339,14 @@ const topMeetings = async (order) => {
 // const NOVALUE_ASSET_ID = 29147319;
 
 exports.giftALGO = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  if (context.app == undefined) {
+    throw new functions.https.HttpsError(
+        "failed-precondition",
+        "The function must be called from an App Check verified app.");
+  }
+  const uid = context.auth.uid;
+  if (!uid) return;
+  
   const creatorAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log("creatorAccount.addr", creatorAccount.addr);
 
