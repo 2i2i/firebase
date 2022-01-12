@@ -16,14 +16,23 @@ service cloud.firestore {
     }
 
     // users
+    function meetingConsistent() {
+      let meeting = getAfter(/databases/$(database)/documents/meetings/$(request.resource.data.meeting));
+      let updatingOwnAsB = meeting.data.B == request.auth.uid && request.auth.uid == userId;
+      let updatingA = meeting.data.A == userId;
+      return meeting.data.status == "INIT" && (updatingOwnAsB || updatingA);
+    }
     match /users/{userId} {
       // any logged in user can read
       allow read: if request.auth != null;
       
       // only self user can write
       // resource.data.meeting != null to avoid heartbeats of users that do not exist anymore
-      allow write: if request.auth != null && request.auth.uid == userId && resource.data.keys().hasAll(['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeat', 'tags']);
+      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.keys().toSet() == ['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeat', 'tags'].toSet();
+      allow update: if request.auth != null && request.auth.uid == userId && resource.data.keys().hasAll(['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeat', 'tags']);
 
+      // TODO to secure more, add bid to user (null or current bid). then rules can check for bid existance and consistency
+      allow update: if request.auth != null && resource.data.meeting == null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['meeting']);// && meetingConsistent();
     }
 
     match /users/{userId}/private/{document=**} {
@@ -57,7 +66,7 @@ service cloud.firestore {
       allow read, write: if request.auth != null && subCollectionId.matches('.*' + request.auth.uid + '.*');
     }
 
-    // end meeting
+    // update meeting
     function isEndReason() {
       return request.resource.data.status == 'END_TIMER' || 
              request.resource.data.status == 'END_A' || 
@@ -96,6 +105,33 @@ service cloud.firestore {
     }
     match /meetings/{meetingId} {
       allow update: if request.auth != null && isAOrB(resource.data) && (isEnd() || isAdvance());
+    }
+
+    // create meeting
+    function hasCorrectFieldsForCreate() {
+      return request.resource.data.keys().toSet() == ['isActive', 'isSettled', 'A', 'B', 'addrA', 'addrB', 'budget', 'start', 'end', 'duration', 'txns', 'status', 'statusHistory', 'net', 'speed', 'bid', 'room', 'coinFlowsA', 'coinFlowsB'].toSet();
+    }
+    function hasCorrectValuesForCreate() {
+      return request.auth.uid == request.resource.data.B &&
+             request.resource.data.isActive &&
+             !request.resource.data.isSettled &&
+             ((request.resource.data.speed.num == 0 && request.resource.data.budget == 0) || request.resource.data.budget == null) &&
+             request.resource.data.start == null &&
+             request.resource.data.end == null &&
+             request.resource.data.duration == null &&
+             request.resource.data.status == "INIT" &&
+             request.resource.data.net != null &&
+             request.resource.data.speed != null &&
+             request.resource.data.bid != null &&
+             request.resource.data.room == null;
+    }
+    function bidsExistForCreate() {
+      let bidOut = get(/databases/$(database)/documents/users/$(request.resource.data.A)/bidOuts/$(request.resource.data.bid));
+      let bidInPrivate = get(/databases/$(database)/documents/users/$(request.resource.data.B)/bidIns/$(request.resource.data.bid)/private/main);
+      return bidOut.data.B == request.auth.uid  && bidInPrivate.data.A == request.resource.data.A;
+    }
+    match /meetings/{meetingId} {
+      allow create: if request.auth != null && hasCorrectFieldsForCreate() && hasCorrectValuesForCreate() && bidsExistForCreate();
     }
 
     // ratings
