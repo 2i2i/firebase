@@ -303,8 +303,8 @@ const topMeetings = async (order) => {
   const querySnapshot = await db
       .collection("meetings")
       .where("isSettled", "==", true)
+      .select("B", "duration", "speed")
       .where("speed.assetId", "==", 0)
-      .select(["B", "duration", "speed"])
       .orderBy(order, "desc")
       .limit(10)
       .get();
