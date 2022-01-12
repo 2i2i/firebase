@@ -146,6 +146,7 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore
       console.log("meetingUpdated, newMeeting.status", newMeeting.status);
       if (!newMeeting.status.startsWith("END_")) return 0;
 
+      // unlock users
       const colRef = db.collection("users");
       const A = newMeeting.A;
       const B = newMeeting.B;
@@ -154,14 +155,13 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore
       const unlockAPromise = docRefA.update({meeting: null});
       const unlockBPromise = docRefB.update({meeting: null});
       await Promise.all([unlockAPromise, unlockBPromise]);
+      console.log("meetingUpdated, users unlocked");
 
       // if meeting never started, nothing to settle
       if (newMeeting.start === null) {
         return 0;
       }
-      const start = (new Date(newMeeting.start)).get.getTime();
-      const end = (new Date(newMeeting.end)).getTime();
-      newMeeting.duration = Math.round((end - start) / 1000);
+      newMeeting.duration = newMeeting.end.seconds - newMeeting.start.seconds;
 
       // were coins locked?
       if (newMeeting.budget === 0) {
@@ -332,6 +332,9 @@ const topMeetings = async (order) => {
 
   return Promise.all(futures);
 };
+
+// exports.test = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+// });
 
 // const NOVALUE_ASSET_ID = 29147319;
 
