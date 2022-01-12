@@ -346,7 +346,7 @@ exports.giftALGO = functions.runWith(runWithObj).https.onCall(async (data, conte
   }
   const uid = context.auth.uid;
   if (!uid) return;
-  
+
   const creatorAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log("creatorAccount.addr", creatorAccount.addr);
 
