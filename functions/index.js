@@ -243,7 +243,7 @@ const settleALGOMeeting = async (
 };
 
 // every minute
-exports.checkUserStatus = functions.pubsub.schedule("* * * * *").onRun(async (context) => {
+exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
   console.log("context", context);
   const T = new Date();
   T.setSeconds(T.getSeconds() - 10);
