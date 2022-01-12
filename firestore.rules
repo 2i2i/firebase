@@ -81,7 +81,7 @@ service cloud.firestore {
       return (request.resource.data.status == 'END_TIMER' && (resource.data.status == 'INIT' || resource.data.status == 'TXN_CREATED' || resource.data.status == 'CALL_STARTED')) ||
              (request.resource.data.status == 'END_A' && request.auth.uid == resource.data.A && (resource.data.status == 'INIT' || resource.data.status == 'CALL_STARTED')) ||
              (request.resource.data.status == 'END_B' && request.auth.uid == resource.data.B && (resource.data.status == 'INIT' || resource.data.status == 'CALL_STARTED')) ||
-             (request.resource.data.status == 'END_TXN_FAILED' && resource.data.status == 'TXN_SENT')
+             (request.resource.data.status == 'END_TXN_FAILED' && (resource.data.status == 'TXN_SIGNED' || resource.data.status == 'TXN_SENT' || resource.data.status == 'TXN_CREATED'))
     }
     function hasCorrectFieldsForEnd() {
       let k = request.resource.data.diff(resource.data).affectedKeys();
