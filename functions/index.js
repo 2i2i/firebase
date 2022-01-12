@@ -338,18 +338,18 @@ const topMeetings = async (order) => {
 
 // const NOVALUE_ASSET_ID = 29147319;
 
-// exports.giftALGO = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
-//   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
-//   console.log("creatorAccount.addr", creatorAccount.addr);
+exports.giftALGO = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  const creatorAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  console.log("creatorAccount.addr", creatorAccount.addr);
 
-//   const userAccount = {addr: data.account};
-//   console.log("data.account", data.account);
+  const userAccount = {addr: data.account};
+  console.log("data.account", data.account);
 
-//   return sendALGO(clientTESTNET,
-//       creatorAccount,
-//       userAccount,
-//       1000000);
-// });
+  return sendALGO(clientTESTNET,
+      creatorAccount,
+      userAccount,
+      1000000);
+});
 
 // exports.giftASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
 //   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
@@ -365,31 +365,31 @@ const topMeetings = async (order) => {
 //       NOVALUE_ASSET_ID);
 // });
 
-// const sendALGO = async (client, fromAccount, toAccount, amount) => {
-//   // txn
-//   const suggestedParams = await client.getTransactionParams().do();
-//   // const note = new Uint8Array(Buffer.from('', 'utf8'));
-//   const transactionOptions = {
-//     from: fromAccount.addr,
-//     to: toAccount.addr,
-//     amount,
-//     // note,
-//     suggestedParams,
-//   };
-//   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
-//       transactionOptions,
-//   );
+const sendALGO = async (client, fromAccount, toAccount, amount) => {
+  // txn
+  const suggestedParams = await client.getTransactionParams().do();
+  // const note = new Uint8Array(Buffer.from('', 'utf8'));
+  const transactionOptions = {
+    from: fromAccount.addr,
+    to: toAccount.addr,
+    amount,
+    // note,
+    suggestedParams,
+  };
+  const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
+      transactionOptions,
+  );
 
-//   // sign
-//   const signedTxn = txn.signTxn(fromAccount.sk);
+  // sign
+  const signedTxn = txn.signTxn(fromAccount.sk);
 
-//   // send raw
-//   const {txId} = await client.sendRawTransaction(signedTxn).do();
-//   console.log("txId");
-//   console.log(txId);
+  // send raw
+  const {txId} = await client.sendRawTransaction(signedTxn).do();
+  console.log("txId");
+  console.log(txId);
 
-//   return txId;
-// };
+  return txId;
+};
 
 // const optIn = async (client, account, assetIndex) =>
 //   sendASA(client, account, account, 0, assetIndex);

@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "i2i-test"
-  }
+    "default": "i2i-test",
+    "main": "app-2i2i",
+    "test": "i2i-test"
+  },
+  "targets": {}
 }
