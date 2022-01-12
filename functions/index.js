@@ -42,113 +42,6 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
   return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
-exports.acceptBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
-  // context.app will be undefined if the request doesn't include a valid
-  // App Check token.
-  if (context.app == undefined) {
-    throw new functions.https.HttpsError(
-        "failed-precondition",
-        "The function must be called from an App Check verified app.");
-  }
-  const uid = context.auth.uid;
-  if (!uid) return;
-
-  console.log("data", data);
-  const bidB = uid;
-  console.log("uid", uid);
-
-  const users = db.collection("users");
-  const docRefBidIn = users.doc(uid).collection("bidIns").doc(data.bid);
-  const docRefBidInPrivate = docRefBidIn.collection("private").doc("main");
-  console.log("starting tx");
-
-  // TODO performance: use parallels promises
-  return db.runTransaction(async (T) => {
-    const docBidInFuture = T.get(docRefBidIn);
-    const docBidInPrivateFuture = T.get(docRefBidInPrivate);
-    const docBidReults = await Promise.all([docBidInFuture, docBidInPrivateFuture]);
-    const docBidIn = docBidReults[0];
-    const docBidInPrivate = docBidReults[1];
-
-    const bidInSpeed = docBidIn.get("speed");
-    const bidInNet = docBidIn.get("net");
-    const budget = bidInSpeed.num === 0 ? 0 : null;
-
-    const bidA = docBidInPrivate.get("A");
-    const docRefBidOut = users.doc(bidA).collection("bidOuts").doc(data.bid);
-    const docBidOut = await T.get(docRefBidOut);
-    const bidOutSpeed = docBidOut.get("speed");
-    const bidOutNet = docBidOut.get("net");
-    const bidOutB = docBidOut.get("B");
-
-    console.log("docBidIn", docBidIn.data());
-    console.log("docBidInPrivate", docBidInPrivate.data());
-    console.log("docBidOut", docBidOut.data());
-
-    // check vs bidOut
-    if (bidB !== bidOutB || bidInNet !== bidOutNet || bidInSpeed.assetId !== bidOutSpeed.assetId || bidInSpeed.num !== bidOutSpeed.num) throw Error("failed to match bidOut");
-
-    // check that bidA and bidB are not locked
-    const docRefA = users.doc(bidA);
-    const docRefB = users.doc(bidB);
-    const docAFuture = T.get(docRefA);
-    const docBFuture = T.get(docRefB);
-    const docABResults = await Promise.all([docAFuture, docBFuture]);
-    const docA = docABResults[0];
-    const docB = docABResults[1];
-    const meetingA = docA.get("meeting");
-    const meetingB = docB.get("meeting");
-    console.log("meetingA", meetingA);
-    console.log("meetingB", meetingB);
-    if (meetingA) throw Error("meetingA");
-    if (meetingB) throw Error("meetingB");
-
-    // create meeting
-    const docRefMeeting = db.collection("meetings").doc();
-    const dataMeeting = {
-      isActive: true,
-      isSettled: false,
-      A: bidA,
-      B: bidB,
-      addrA: docBidInPrivate.get("addrA"),
-      addrB: data.addrB,
-      budget: budget,
-      start: null,
-      end: null,
-      duration: null,
-      txns: {
-        group: null,
-        lockALGO: null,
-        lockASA: null,
-        state: null,
-        unlock: null,
-        optIn: null,
-      },
-      status: "INIT",
-      statusHistory: [{value: "INIT", ts: admin.firestore.Timestamp.now()}],
-      net: bidInNet,
-      speed: bidInSpeed,
-      bid: data.bid,
-      room: null,
-      coinFlowsA: [],
-      coinFlowsB: [],
-    };
-    T.create(docRefMeeting, dataMeeting);
-
-    // lock
-    T.update(docRefA, {
-      meeting: docRefMeeting.id,
-    });
-    T.update(docRefB, {
-      meeting: docRefMeeting.id,
-    });
-
-    // bids are not active anymore
-    T.update(docRefBidIn, {active: false});
-    T.update(docRefBidOut, {active: false});
-  });
-});
-
 exports.ratingAdded = functions.runWith(runWithObj).firestore
     .document("users/{userId}/ratings/{ratingId}")
     .onCreate((change, context) => {
@@ -158,9 +51,14 @@ exports.ratingAdded = functions.runWith(runWithObj).firestore
         const docRefUser = db.collection("users").doc(userId);
         const docUser = await docRefUser.get();
         const numRatings = docUser.numRatings ?? 0;
+        console.log("numRatings", numRatings);
         const userRating = docUser.rating ?? 1;
+        console.log("userRating", userRating);
         const newNumRatings = numRatings + 1;
+        console.log("newNumRatings", newNumRatings);
+        console.log("meetingRating", meetingRating);
         const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
+        console.log("newRating", newRating);
         await docRefUser.update({
           rating: newRating,
           numRatings: newNumRatings,
@@ -212,6 +110,21 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
 };
 
+exports.meetingCreated = functions.runWith(runWithObj).firestore
+    .document("meetings/{meetingId}")
+    .onCreate(async (change, context) => {
+      const meeting = change.data();
+      const A = meeting.A;
+      const B = meeting.B;
+      const bid = meeting.bid;
+      const obj = {active: false};
+      const bidOutRef = db.collection("users").doc(A).collection("bidOuts").doc(bid);
+      const bidInRef = db.collection("users").doc(B).collection("bidIns").doc(bid);
+      return db.runTransaction(async (T) => {
+        T.update(bidOutRef, obj);
+        T.update(bidInRef, obj);
+      });
+    });
 exports.meetingUpdated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onUpdate(async (change, context) => {
