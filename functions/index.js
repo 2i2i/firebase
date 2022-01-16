@@ -218,7 +218,7 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
       const meetingObj = {
         status: "END_DISCONNECT",
         statusHistory: admin.firestore.FieldValue.arrayUnion({value: "END_DISCONNECT", ts: admin.firestore.Timestamp.now()}),
-        isActive: false,
+        active: false,
         end: admin.firestore.FieldValue.serverTimestamp(),
       };
       const meetingDocRef = db.collection("meetings").doc(meeting);
@@ -258,7 +258,7 @@ exports.topSpeedMeetings = functions.runWith(runWithObj).https.onCall(async (dat
 const topMeetings = async (order) => {
   const querySnapshot = await db
       .collection("meetings")
-      .where("isSettled", "==", true)
+      .where("settled", "==", true)
       .select("B", "duration", "speed")
       .where("speed.assetId", "==", 0)
       .orderBy(order, "desc")
