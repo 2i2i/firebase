@@ -183,11 +183,15 @@ const settleALGOMeeting = async (
   const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   const ps = [];
   if (energyA !== 0) {
-    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrA}, energyA);
+    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrA}, energyA).catch(error => {
+      console.error(error);
+    });
     ps.push(p);
   }
   if (energyB !== 0) {
-    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrB}, energyB);
+    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrB}, energyB).catch(error => {
+      console.error(error);
+    });
     ps.push(p);
   }
 
