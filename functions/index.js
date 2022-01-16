@@ -4,7 +4,7 @@
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 
 const functions = require("firebase-functions");
-// const algosdk = require("algosdk");
+const algosdk = require("algosdk");
 // algosdk.algosToMicroalgos(1);
 
 const admin = require("firebase-admin");
@@ -16,16 +16,18 @@ const db = admin.firestore();
 //     "https://algoexplorerapi.io",
 //     "",
 // );
-// const clientTESTNET = new algosdk.Algodv2(
-//     "",
-//     "https://testnet.algoexplorerapi.io",
-//     "",
-// );
-// const indexerTESTNET = new algosdk.Indexer(
-//     "",
-//     "https://algoindexer.testnet.algoexplorerapi.io",
-//     "",
-// );
+const clientTESTNET = new algosdk.Algodv2(
+    "",
+    "https://testnet.algoexplorerapi.io",
+    "",
+);
+const indexerTESTNET = new algosdk.Indexer(
+    "",
+    "https://algoindexer.testnet.algoexplorerapi.io",
+    "",
+);
+const SYSTEM_ACCOUNT = "KTNEHVYFHJIWSTWZ7SQJSSA24JHTX3KXUABO64ZQTRCBFIM3EMCXVMBD6M";
+const MIN_TXN_FEE = 1000;
 
 const runWithObj = {minInstances: 0, memory: "128MB"};
 
@@ -67,9 +69,6 @@ exports.ratingAdded = functions.runWith(runWithObj).firestore
       });
     });
 
-// const SYSTEM_ACCOUNT = "KTNEHVYFHJIWSTWZ7SQJSSA24JHTX3KXUABO64ZQTRCBFIM3EMCXVMBD6M";
-// const MIN_TXN_FEE = 1000;
-
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onCreate(async (change, context) => {
@@ -88,105 +87,112 @@ exports.meetingCreated = functions.runWith(runWithObj).firestore
 exports.meetingUpdated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onUpdate(async (change, context) => {
-      // const oldMeeting = change.before.data();
-      // const newMeeting = change.after.data();
+      const oldMeeting = change.before.data();
+      const newMeeting = change.after.data();
 
-      // // has status changed?
-      // console.log("meetingUpdated, oldMeeting.status, newMeeting.status", oldMeeting.status, newMeeting.status);
-      // if (oldMeeting.status === newMeeting.status) return 0;
+      // has status changed?
+      console.log("meetingUpdated, oldMeeting.status, newMeeting.status", oldMeeting.status, newMeeting.status);
+      if (oldMeeting.status === newMeeting.status) return 0;
 
-      // if ((newMeeting.status === "RECEIVED_REMOTE_A" && oldMeeting.status == "RECEIVED_REMOTE_B") ||
-      //      newMeeting.status === "RECEIVED_REMOTE_B" && oldMeeting.status == "RECEIVED_REMOTE_A") {
-      //   return change.after.ref.update({
-      //     start: admin.firestore.FieldValue.serverTimestamp(),
-      //     status: "CALL_STARTED",
-      //     statusHistory: admin.firestore.FieldValue.arrayUnion({
-      //       value: "CALL_STARTED",
-      //       ts: admin.firestore.Timestamp.now(),
-      //     }),
-      //   });
-      // }
+      if ((newMeeting.status === "RECEIVED_REMOTE_A" && oldMeeting.status == "RECEIVED_REMOTE_B") ||
+           newMeeting.status === "RECEIVED_REMOTE_B" && oldMeeting.status == "RECEIVED_REMOTE_A") {
+        return change.after.ref.update({
+          start: admin.firestore.FieldValue.serverTimestamp(),
+          status: "CALL_STARTED",
+          statusHistory: admin.firestore.FieldValue.arrayUnion({
+            value: "CALL_STARTED",
+            ts: admin.firestore.Timestamp.now(),
+          }),
+        });
+      }
 
-      // // is meeting done?
-      // console.log("meetingUpdated, newMeeting.status", newMeeting.status);
-      // if (!newMeeting.status.startsWith("END_")) return 0;
+      // is meeting done?
+      console.log("meetingUpdated, newMeeting.status", newMeeting.status);
+      if (!newMeeting.status.startsWith("END_")) return 0;
 
-      // // unlock users
-      // if (newMeeting.status === "END_DISCONNECT") {
-      //   const colRef = db.collection("users");
-      //   const A = newMeeting.A;
-      //   const B = newMeeting.B;
-      //   const docRefA = colRef.doc(A);
-      //   const docRefB = colRef.doc(B);
-      //   const unlockAPromise = docRefA.update({meeting: null});
-      //   const unlockBPromise = docRefB.update({meeting: null});
-      //   await Promise.all([unlockAPromise, unlockBPromise]);
-      //   console.log("meetingUpdated, users unlocked");
-      // }
+      // unlock users
+      if (newMeeting.status === "END_DISCONNECT") {
+        const colRef = db.collection("users");
+        const A = newMeeting.A;
+        const B = newMeeting.B;
+        const docRefA = colRef.doc(A);
+        const docRefB = colRef.doc(B);
+        const unlockAPromise = docRefA.update({meeting: null});
+        const unlockBPromise = docRefB.update({meeting: null});
+        await Promise.all([unlockAPromise, unlockBPromise]);
+        console.log("meetingUpdated, users unlocked");
+      }
 
-      // newMeeting.duration = newMeeting.end.seconds - newMeeting.start.seconds;
+      newMeeting.duration = newMeeting.start ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
 
-      // return settleMeeting(change.after.ref, newMeeting);
+      return settleMeeting(change.after.ref, newMeeting);
     });
 
-// const settleMeeting = async (docRef, meeting) => {
-//   console.log("settleMeeting, meeting", meeting);
+const settleMeeting = async (docRef, meeting) => {
+  console.log("settleMeeting, meeting", meeting);
 
-//   let txIds = null;
-//   if (meeting.speed.num !== 0) {
-//     if (meeting.speed.assetId === 0) {
-//       txIds = await settleALGOMeeting(clientTESTNET, meeting);
-//     } else {
-//       // txId = await settleASAMeeting(clientTESTNET, meeting);
-//       throw Error("no ASA at the moment");
-//     }
-//   }
+  let txIds = null;
+  if (meeting.speed.num !== 0) {
+    if (meeting.speed.assetId === 0) {
+      txIds = await settleALGOMeeting(clientTESTNET, meeting);
+    } else {
+      // txId = await settleASAMeeting(clientTESTNET, meeting);
+      throw Error("no ASA at the moment");
+    }
+  }
 
-//   console.log("settleMeeting, txIds", txIds);
+  console.log("settleMeeting, txIds", txIds);
 
-//   // update meeting
-//   return docRef.update({
-//     "txns.unlock": txIds,
-//     "settled": true,
-//     "duration": meeting.duration,
-//   });
-// };
+  // update meeting
+  return docRef.update({
+    "txns.unlock": txIds,
+    "settled": true,
+    "duration": meeting.duration,
+  });
+};
 
-// const settleALGOMeeting = async (
-//     algodclient,
-//     meeting,
-// ) => {
-//   const note = Buffer.from(meeting.bid + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
-//   const lookup = await indexerTESTNET.lookupAccountTransactions(SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
-//   console.log("lookup", lookup, lookup.transactions.length);
+const settleALGOMeeting = async (
+    algodclient,
+    meeting,
+) => {
+  const note = Buffer.from(meeting.bid + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
+  const lookup = await indexerTESTNET.lookupAccountTransactions(SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
+  console.log("lookup", lookup, lookup.transactions.length);
 
-//   if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
-//   const txn = lookup.transactions[0];
-//   const sender = txn.sender;
-//   console.log("sender", sender, meeting.A, sender !== meeting.addrA);
-//   if (sender !== meeting.addrA) return; // pay back to same account only
-//   const paymentTxn = txn["payment-transaction"];
-//   const receiver = paymentTxn.receiver;
-//   console.log("receiver", receiver, receiver !== SYSTEM_ACCOUNT);
-//   if (receiver !== SYSTEM_ACCOUNT) return;
+  if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
+  const txn = lookup.transactions[0];
+  const sender = txn.sender;
+  console.log("sender", sender, meeting.A, sender !== meeting.addrA);
+  if (sender !== meeting.addrA) return; // pay back to same account only
+  const paymentTxn = txn["payment-transaction"];
+  const receiver = paymentTxn.receiver;
+  console.log("receiver", receiver, receiver !== SYSTEM_ACCOUNT);
+  if (receiver !== SYSTEM_ACCOUNT) return;
 
-//   const maxEnergy = paymentTxn.amount - 2 * MIN_TXN_FEE;
-//   console.log("maxEnergy", maxEnergy);
+  const maxEnergy = paymentTxn.amount - 2 * MIN_TXN_FEE;
+  console.log("maxEnergy", maxEnergy);
 
-//   const energy = Math.min(meeting.duration * meeting.speed.num, maxEnergy);
-//   console.log("energy", energy);
+  const energy = Math.min(meeting.duration * meeting.speed.num, maxEnergy);
+  console.log("energy", energy);
 
-//   const energyA = maxEnergy - energy;
-//   console.log("energyA", energyA);
-//   const energyB = Math.ceil(0.9 * energy);
-//   console.log("energyB", energyB);
+  const energyA = maxEnergy - energy + (energy === 0 ? MIN_TXN_FEE : 0);
+  console.log("energyA", energyA);
+  const energyB = Math.ceil(0.9 * energy);
+  console.log("energyB", energyB);
 
-//   const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
-//   const p2 = sendALGO(algodclient, accountCreator, {addr: meeting.addrA}, energyA);
-//   const p1 = sendALGO(algodclient, accountCreator, {addr: meeting.addrB}, energyB);
+  const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  const ps = [];
+  if (energyA !== 0) {
+    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrA}, energyA);
+    ps.push(p);
+  }
+  if (energyB !== 0) {
+    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrB}, energyB);
+    ps.push(p);
+  }
 
-//   return Promise.all([p1, p2]);
-// };
+  return Promise.all(ps);
+};
 
 // every minute
 exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
@@ -279,31 +285,31 @@ const topMeetings = async (order) => {
   return Promise.all(futures);
 };
 
-// const sendALGO = async (client, fromAccount, toAccount, amount) => {
-//   // txn
-//   const suggestedParams = await client.getTransactionParams().do();
-//   // const note = new Uint8Array(Buffer.from('', 'utf8'));
-//   const transactionOptions = {
-//     from: fromAccount.addr,
-//     to: toAccount.addr,
-//     amount,
-//     // note,
-//     suggestedParams,
-//   };
-//   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
-//       transactionOptions,
-//   );
+const sendALGO = async (client, fromAccount, toAccount, amount) => {
+  // txn
+  const suggestedParams = await client.getTransactionParams().do();
+  // const note = new Uint8Array(Buffer.from('', 'utf8'));
+  const transactionOptions = {
+    from: fromAccount.addr,
+    to: toAccount.addr,
+    amount,
+    // note,
+    suggestedParams,
+  };
+  const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
+      transactionOptions,
+  );
 
-//   // sign
-//   const signedTxn = txn.signTxn(fromAccount.sk);
+  // sign
+  const signedTxn = txn.signTxn(fromAccount.sk);
 
-//   // send raw
-//   const {txId} = await client.sendRawTransaction(signedTxn).do();
-//   console.log("txId");
-//   console.log(txId);
+  // send raw
+  const {txId} = await client.sendRawTransaction(signedTxn).do();
+  console.log("txId");
+  console.log(txId);
 
-//   return txId;
-// };
+  return txId;
+};
 
 // exports.test = functions.runWith(runWithObj).https.onCall(async (data, context) => {
 // });
