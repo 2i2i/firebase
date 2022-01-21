@@ -29,6 +29,14 @@ const indexerTESTNET = new algosdk.Indexer(
 const SYSTEM_ACCOUNT = "KTNEHVYFHJIWSTWZ7SQJSSA24JHTX3KXUABO64ZQTRCBFIM3EMCXVMBD6M";
 const MIN_TXN_FEE = 1000;
 
+const LOUNGE_DICT = {
+  "chrony": 0,
+  "highroller": 1,
+  "eccentric": 2,
+  "lurker": 3,
+}
+const MAX_LOUNGE_HISTORY = 100;
+
 const runWithObj = {minInstances: 0, memory: "128MB"};
 
 exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
@@ -52,7 +60,9 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
         highroller: 5,
         eccentric: 0,
       },
-    }
+    },
+    loungeHistory: [],
+    loungeHistoryIndex: -1,
   });
   const createUserPrivateFuture = docRefUser.collection("private").doc("main").create({
     blocked: [],
@@ -83,14 +93,14 @@ exports.ratingAdded = functions.runWith(runWithObj).firestore
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onCreate(async (change, context) => {
+      const id = change.id;
       const meeting = change.data();
       const A = meeting.A;
       const B = meeting.B;
-      const bid = meeting.bid;
       const obj = {active: false};
-      const bidOutRef = db.collection("users").doc(A).collection("bidOuts").doc(bid);
-      const bidInPublicRef = db.collection("users").doc(B).collection("bidInsPublic").doc(bid);
-      const bidInPrivateRef = db.collection("users").doc(B).collection("bidInsPrivate").doc(bid);
+      const bidOutRef = db.collection("users").doc(A).collection("bidOuts").doc(id);
+      const bidInPublicRef = db.collection("users").doc(B).collection("bidInsPublic").doc(id);
+      const bidInPrivateRef = db.collection("users").doc(B).collection("bidInsPrivate").doc(id);
       return db.runTransaction(async (T) => {
         T.update(bidOutRef, obj);
         T.update(bidInPublicRef, obj);
@@ -147,7 +157,7 @@ const settleMeeting = async (docRef, meeting) => {
   let txIds = null;
   if (meeting.speed.num !== 0) {
     if (meeting.speed.assetId === 0) {
-      txIds = await settleALGOMeeting(clientTESTNET, meeting);
+      txIds = await settleALGOMeeting(clientTESTNET, docRef.id, meeting);
     } else {
       // txId = await settleASAMeeting(clientTESTNET, meeting);
       throw Error("no ASA at the moment");
@@ -156,19 +166,33 @@ const settleMeeting = async (docRef, meeting) => {
 
   console.log("settleMeeting, txIds", txIds);
 
+  // lounge history
+  const lounge = LOUNGE_DICT[meeting.lounge];
+  const loungeHistory = meeting.loungeHistory;
+  const loungeHistoryIndex = (meeting.loungeHistoryIndex + 1) % MAX_LOUNGE_HISTORY;
+  if (loungeHistory.length < MAX_LOUNGE_HISTORY) {
+    loungeHistory.push(lounge);
+  }
+  else {
+    loungeHistory[loungeHistoryIndex] = lounge;
+  }
+
   // update meeting
   return docRef.update({
     "txns.unlock": txIds,
     "settled": true,
     "duration": meeting.duration,
+    "loungeHistory": loungeHistory,
+    "loungeHistoryIndex": loungeHistoryIndex,
   });
 };
 
 const settleALGOMeeting = async (
     algodclient,
+    id,
     meeting,
 ) => {
-  const note = Buffer.from(meeting.bid + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
+  const note = Buffer.from(id + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
   const lookup = await indexerTESTNET.lookupAccountTransactions(SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
   console.log("lookup", lookup, lookup.transactions.length);
 
