@@ -42,6 +42,17 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
     numRatings: 0,
     heartbeat: admin.firestore.FieldValue.serverTimestamp(),
     tags: [],
+    rule: {
+      // set also in frontend (userModel)
+      maxMeetingDuration: 300,
+      minSpeed: 0,
+      importance: {
+        lurker: 0,
+        chrony: 1,
+        highroller: 5,
+        eccentric: 0,
+      },
+    }
   });
   const createUserPrivateFuture = docRefUser.collection("private").doc("main").create({
     blocked: [],
@@ -78,10 +89,12 @@ exports.meetingCreated = functions.runWith(runWithObj).firestore
       const bid = meeting.bid;
       const obj = {active: false};
       const bidOutRef = db.collection("users").doc(A).collection("bidOuts").doc(bid);
-      const bidInRef = db.collection("users").doc(B).collection("bidIns").doc(bid);
+      const bidInPublicRef = db.collection("users").doc(B).collection("bidInsPublic").doc(bid);
+      const bidInPrivateRef = db.collection("users").doc(B).collection("bidInsPrivate").doc(bid);
       return db.runTransaction(async (T) => {
         T.update(bidOutRef, obj);
-        T.update(bidInRef, obj);
+        T.update(bidInPublicRef, obj);
+        T.update(bidInPrivateRef, obj);
       });
     });
 exports.meetingUpdated = functions.runWith(runWithObj).firestore
@@ -183,13 +196,13 @@ const settleALGOMeeting = async (
   const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   const ps = [];
   if (energyA !== 0) {
-    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrA}, energyA).catch(error => {
+    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrA}, energyA).catch((error) => {
       console.error(error);
     });
     ps.push(p);
   }
   if (energyB !== 0) {
-    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrB}, energyB).catch(error => {
+    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrB}, energyB).catch((error) => {
       console.error(error);
     });
     ps.push(p);
@@ -315,7 +328,44 @@ const sendALGO = async (client, fromAccount, toAccount, amount) => {
   return txId;
 };
 
+// exports.updateFX = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
+//   const colRef = db.collection("FX");
+//   const settings = await colRef.doc("settings").get();
+//   const ccys = settings.get("ccys");
+
+//   const promises = [];
+//   for(const ccy of ccys) {
+//     if (ccy === "ALGO") continue;
+//     const docRef = colRef.doc(`${ccy}ALGO`)
+//     const p = docRef.update({
+//       ts: admin.firestore.FieldValue.serverTimestamp(),
+//       value: 1, // TODO connect API
+//     });
+//     promises.push(p);
+//   }
+
+//   return Promise.all(promises);
+// });
+
 // exports.test = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+//   const colRef = db.collection("FX");
+//   const settings = await colRef.doc("settings").get();
+//   const ccys = settings.get("ccys");
+
+//   const promises = [];
+//   for(const ccy of ccys) {
+//     if (ccy === "ALGO") continue;
+//     console.log(ccy);
+//     const docRef = colRef.doc(`${ccy}ALGO`)
+//     console.log(docRef);
+//     const p = docRef.update({
+//       ts: admin.firestore.FieldValue.serverTimestamp(),
+//       value: 1, // TODO connect API
+//     });
+//     promises.push(p);
+//   }
+
+//   return Promise.all(promises);
 // });
 
 // const NOVALUE_ASSET_ID = 29147319;
