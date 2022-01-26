@@ -119,33 +119,32 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore
 
       if ((newMeeting.status === "RECEIVED_REMOTE_A" && oldMeeting.status == "RECEIVED_REMOTE_B") ||
            newMeeting.status === "RECEIVED_REMOTE_B" && oldMeeting.status == "RECEIVED_REMOTE_A") {
+        return db.runTransaction(async (T) => {
+          const docRefB = db.collection("users").doc(newMeeting.B);
+          const docB = await T.get(docRefB);
 
-            return db.runTransaction(async (T) => {
-              const docRefB = db.collection("users").doc(newMeeting.B);
-              const docB = await T.get(docRefB);
-              
-              // lounge history
-              const loungeHistory = docB.get("loungeHistory");
-              const loungeHistoryIndexDB = docB.get("loungeHistoryIndex");
-              const lounge = LOUNGE_DICT[newMeeting.lounge];
-              const loungeHistoryIndex = (loungeHistoryIndexDB + 1) % MAX_LOUNGE_HISTORY;
-              if (loungeHistory.length < MAX_LOUNGE_HISTORY) {
-                loungeHistory.push(lounge);
-              } else {
-                loungeHistory[loungeHistoryIndex] = lounge;
-              }
+          // lounge history
+          const loungeHistory = docB.get("loungeHistory");
+          const loungeHistoryIndexDB = docB.get("loungeHistoryIndex");
+          const lounge = LOUNGE_DICT[newMeeting.lounge];
+          const loungeHistoryIndex = (loungeHistoryIndexDB + 1) % MAX_LOUNGE_HISTORY;
+          if (loungeHistory.length < MAX_LOUNGE_HISTORY) {
+            loungeHistory.push(lounge);
+          } else {
+            loungeHistory[loungeHistoryIndex] = lounge;
+          }
 
-              return T.update(change.after.ref, {
-                start: admin.firestore.FieldValue.serverTimestamp(),
-                status: "CALL_STARTED",
-                statusHistory: admin.firestore.FieldValue.arrayUnion({
-                  value: "CALL_STARTED",
-                  ts: admin.firestore.Timestamp.now(),
-                }),
-                loungeHistory: loungeHistory,
-                loungeHistoryIndex: loungeHistoryIndex,
-              });
-            });
+          return T.update(change.after.ref, {
+            start: admin.firestore.FieldValue.serverTimestamp(),
+            status: "CALL_STARTED",
+            statusHistory: admin.firestore.FieldValue.arrayUnion({
+              value: "CALL_STARTED",
+              ts: admin.firestore.Timestamp.now(),
+            }),
+            loungeHistory: loungeHistory,
+            loungeHistoryIndex: loungeHistoryIndex,
+          });
+        });
       }
 
       // is meeting done?
