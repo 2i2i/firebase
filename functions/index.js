@@ -34,7 +34,7 @@ const LOUNGE_DICT = {
   "highroller": 1,
   "eccentric": 2,
   "lurker": 3,
-}
+};
 const MAX_LOUNGE_HISTORY = 100;
 
 const runWithObj = {minInstances: 0, memory: "128MB"};
@@ -119,6 +119,17 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore
 
       if ((newMeeting.status === "RECEIVED_REMOTE_A" && oldMeeting.status == "RECEIVED_REMOTE_B") ||
            newMeeting.status === "RECEIVED_REMOTE_B" && oldMeeting.status == "RECEIVED_REMOTE_A") {
+             
+        // lounge history
+        const lounge = LOUNGE_DICT[newMeeting.lounge];
+        const loungeHistory = newMeeting.loungeHistory;
+        const loungeHistoryIndex = (newMeeting.loungeHistoryIndex + 1) % MAX_LOUNGE_HISTORY;
+        if (loungeHistory.length < MAX_LOUNGE_HISTORY) {
+          loungeHistory.push(lounge);
+        } else {
+          loungeHistory[loungeHistoryIndex] = lounge;
+        }
+
         return change.after.ref.update({
           start: admin.firestore.FieldValue.serverTimestamp(),
           status: "CALL_STARTED",
@@ -126,6 +137,8 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore
             value: "CALL_STARTED",
             ts: admin.firestore.Timestamp.now(),
           }),
+          loungeHistory: loungeHistory,
+          loungeHistoryIndex: loungeHistoryIndex,
         });
       }
 
@@ -166,24 +179,11 @@ const settleMeeting = async (docRef, meeting) => {
 
   console.log("settleMeeting, txIds", txIds);
 
-  // lounge history
-  const lounge = LOUNGE_DICT[meeting.lounge];
-  const loungeHistory = meeting.loungeHistory;
-  const loungeHistoryIndex = (meeting.loungeHistoryIndex + 1) % MAX_LOUNGE_HISTORY;
-  if (loungeHistory.length < MAX_LOUNGE_HISTORY) {
-    loungeHistory.push(lounge);
-  }
-  else {
-    loungeHistory[loungeHistoryIndex] = lounge;
-  }
-
   // update meeting
   return docRef.update({
     "txns.unlock": txIds,
     "settled": true,
     "duration": meeting.duration,
-    "loungeHistory": loungeHistory,
-    "loungeHistoryIndex": loungeHistoryIndex,
   });
 };
 
