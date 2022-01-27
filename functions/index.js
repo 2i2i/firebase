@@ -26,7 +26,9 @@ const indexerTESTNET = new algosdk.Indexer(
     "https://algoindexer.testnet.algoexplorerapi.io",
     "",
 );
-const SYSTEM_ACCOUNT = "KTNEHVYFHJIWSTWZ7SQJSSA24JHTX3KXUABO64ZQTRCBFIM3EMCXVMBD6M";
+
+const SYSTEM_ID = 67119462;
+const SYSTEM_ACCOUNT = "PANC6WKDNNLXXKVXWPGUVCTYBPVNL66YCIRJELL2CQP4GKKCEIWQHJZCWU";
 const MIN_TXN_FEE = 1000;
 
 const LOUNGE_DICT = {
@@ -71,9 +73,59 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
   return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
-exports.ratingAdded = functions.runWith(runWithObj).firestore
-    .document("users/{userId}/ratings/{ratingId}")
-    .onCreate((change, context) => {
+exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+
+  const uid = context.auth.uid;
+  const bidId = data.bidId;
+
+  console.log("uid", uid);
+  console.log("bidId", bidId);
+
+  const docRefBidOut = db.collection("users").doc(uid).collection("bidOuts").doc(bidId);
+  return db.runTransaction(async (T) => {
+    const docBidOut = await T.get(docRefBidOut);
+    const speed = docBidOut.get("speed");
+    const addrA = docBidOut.get("addrA");
+    const noteString = bidId + "." + speed.num + "." + speed.assetId;
+    console.log("noteString", noteString);
+    const note = Buffer.from(noteString).toString("base64");
+    console.log("note", note);
+    const lookup = await indexerTESTNET.lookupAccountTransactions(SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
+    console.log("lookup.transactions.length", lookup.transactions.length);
+    
+    if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
+    const txn = lookup.transactions[0];
+    const sender = txn.sender;
+    console.log("sender", sender, addrA, sender !== addrA);
+    if (sender !== addrA) return; // pay back to same account only
+    const paymentTxn = txn["payment-transaction"];
+    const receiver = paymentTxn.receiver;
+    console.log("receiver", receiver, receiver !== SYSTEM_ACCOUNT);
+    if (receiver !== SYSTEM_ACCOUNT) return; // CAREFUL - if we ever change this, cancel would fail
+    
+    const energyA = paymentTxn.amount - 2 * MIN_TXN_FEE; // keep 2 fees
+    const txId = await runUnlock(clientTESTNET, energyA, 0, 0, addrA, addrA);
+    
+    const B = docBidOut.get("B");
+    console.log("B", B);
+    const docRefBidIn = db.collection("users").doc(B).collection("bidInsPublic").doc(bidId);
+    const docRefBidInPrivate = db.collection("users").doc(B).collection("bidInsPrivate").doc(bidId);
+    T.update(docRefBidOut, {
+      "active": false,
+      "txns.cancel": txId,
+    });
+    T.update(docRefBidIn, {
+      "active": false,
+    });
+    T.update(docRefBidInPrivate, {
+      "active": false,
+    });
+  });
+});
+  
+  exports.ratingAdded = functions.runWith(runWithObj).firestore
+  .document("users/{userId}/ratings/{ratingId}")
+  .onCreate((change, context) => {
       const meetingRating = change.get("rating");
       const userId = context.params.userId;
       return db.runTransaction(async (T) => {
@@ -172,10 +224,10 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore
 const settleMeeting = async (docRef, meeting) => {
   console.log("settleMeeting, meeting", meeting);
 
-  let txIds = null;
+  let txId = null;
   if (meeting.speed.num !== 0) {
     if (meeting.speed.assetId === 0) {
-      txIds = await settleALGOMeeting(clientTESTNET, docRef.id, meeting);
+      txId = await settleALGOMeeting(clientTESTNET, docRef.id, meeting);
     } else {
       // txId = await settleASAMeeting(clientTESTNET, meeting);
       throw Error("no ASA at the moment");
@@ -185,11 +237,12 @@ const settleMeeting = async (docRef, meeting) => {
   console.log("settleMeeting, txIds", txIds);
 
   // update meeting
-  return docRef.update({
-    "txns.unlock": txIds,
+  const updateObj = {
     "settled": true,
     "duration": meeting.duration,
-  });
+  };
+  if (txId) updateObj["txns.unlock"] = txId;
+  return docRef.update(updateObj);
 };
 
 const settleALGOMeeting = async (
@@ -198,8 +251,9 @@ const settleALGOMeeting = async (
     meeting,
 ) => {
   const note = Buffer.from(id + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
+  console.log("note", note);
   const lookup = await indexerTESTNET.lookupAccountTransactions(SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
-  console.log("lookup", lookup, lookup.transactions.length);
+  console.log("lookup.transactions.length", lookup.transactions.length);
 
   if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
   const txn = lookup.transactions[0];
@@ -211,34 +265,61 @@ const settleALGOMeeting = async (
   console.log("receiver", receiver, receiver !== SYSTEM_ACCOUNT);
   if (receiver !== SYSTEM_ACCOUNT) return;
 
-  const maxEnergy = paymentTxn.amount - 2 * MIN_TXN_FEE;
+  const maxEnergy = paymentTxn.amount - 4 * MIN_TXN_FEE;
   console.log("maxEnergy", maxEnergy);
 
   const energy = Math.min(meeting.duration * meeting.speed.num, maxEnergy);
   console.log("energy", energy);
 
-  const energyA = maxEnergy - energy + (energy === 0 ? MIN_TXN_FEE : 0);
-  console.log("energyA", energyA);
   const energyB = Math.ceil(0.9 * energy);
   console.log("energyB", energyB);
+  const energyFee = energy - energyB;
+  console.log("energyFee", energyFee);
+  const energyA = maxEnergy - energyB - energyFee + (energyB === 0 ? MIN_TXN_FEE : 0) + (energyFee === 0 ? MIN_TXN_FEE : 0);
+  console.log("energyA", energyA);
 
-  const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
-  const ps = [];
-  if (energyA !== 0) {
-    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrA}, energyA).catch((error) => {
-      console.error(error);
-    });
-    ps.push(p);
-  }
-  if (energyB !== 0) {
-    const p = sendALGO(algodclient, accountCreator, {addr: meeting.addrB}, energyB).catch((error) => {
-      console.error(error);
-    });
-    ps.push(p);
-  }
-
-  return Promise.all(ps);
+  return runUnlock(algodclient, energyA, energyFee, energyB, meeting.addrA, meeting.addrB);
 };
+
+const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB) => {
+  const SYSTEM_PK = "journey party ecology bar field tattoo drop wasp save robot mouse camera two tissue potato fork blanket buyer swim laundry segment burst toast above enroll";
+  const accountCreator = algosdk.mnemonicToSecretKey(SYSTEM_PK);
+  // const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  const appArg0 = new TextEncoder().encode("UNLOCK");
+  const appArg1 = algosdk.encodeUint64(energyA);
+  const appArg2 = algosdk.encodeUint64(energyFee);
+  const appArg3 = algosdk.encodeUint64(energyB);
+  const appArgs = [appArg0, appArg1, appArg2, appArg3];
+  const suggestedParams = await algodclient.getTransactionParams().do();
+  const unlockTxn = algosdk.makeApplicationNoOpTxnFromObject({
+    from: accountCreator.addr,
+    appIndex: SYSTEM_ID,
+    appArgs,
+    accounts: [addrA, addrB],
+    suggestedParams,
+  });
+  console.log("runUnlock, unlockTxn");
+
+  // sign
+  const stateTxnSigned = unlockTxn.signTxn(accountCreator.sk);
+  console.log("runUnlock, signed");
+
+  // send
+  try {
+    const { txId } = await algodclient.sendRawTransaction([stateTxnSigned]).do();
+    console.log("runUnlock, sent", txId);
+
+    // confirm
+    const timeout = 5;
+    await waitForConfirmation(algodclient, txId, timeout);
+    console.log("runUnlock, confirmed");
+
+    return txId;
+  } catch (e) {
+    console.log("error", e);
+    throw Error(e);
+  }
+}
 
 // every minute
 exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
@@ -434,47 +515,47 @@ const sendALGO = async (client, fromAccount, toAccount, amount) => {
 //       NOVALUE_ASSET_ID);
 // });
 
-// const waitForConfirmation = async (algodclient, txId, timeout) => {
-//   if (algodclient == null || txId == null || timeout < 0) {
-//     throw new Error("Bad arguments.");
-//   }
-//   const status = await algodclient.status().do();
-//   if (typeof status === "undefined") {
-//     throw new Error("Unable to get node status");
-//   }
-//   const startround = status["last-round"] + 1;
-//   let currentround = startround;
+const waitForConfirmation = async (algodclient, txId, timeout) => {
+  if (algodclient == null || txId == null || timeout < 0) {
+    throw new Error("Bad arguments.");
+  }
+  const status = await algodclient.status().do();
+  if (typeof status === "undefined") {
+    throw new Error("Unable to get node status");
+  }
+  const startround = status["last-round"] + 1;
+  let currentround = startround;
 
-//   /* eslint-disable no-await-in-loop */
-//   while (currentround < startround + timeout) {
-//     const pendingInfo = await algodclient
-//         .pendingTransactionInformation(txId)
-//         .do();
-//     if (pendingInfo !== undefined) {
-//       if (
-//         pendingInfo["confirmed-round"] !== null &&
-//         pendingInfo["confirmed-round"] > 0
-//       ) {
-//         // Got the completed Transaction
-//         return pendingInfo;
-//       }
+  /* eslint-disable no-await-in-loop */
+  while (currentround < startround + timeout) {
+    const pendingInfo = await algodclient
+        .pendingTransactionInformation(txId)
+        .do();
+    if (pendingInfo !== undefined) {
+      if (
+        pendingInfo["confirmed-round"] !== null &&
+        pendingInfo["confirmed-round"] > 0
+      ) {
+        // Got the completed Transaction
+        return pendingInfo;
+      }
 
-//       if (
-//         pendingInfo["pool-error"] != null &&
-//         pendingInfo["pool-error"].length > 0
-//       ) {
-//         // If there was a pool error, then the transaction has been rejected!
-//         throw new Error(
-//             `Transaction Rejected pool error${pendingInfo["pool-error"]}`,
-//         );
-//       }
-//     }
-//     await algodclient.statusAfterBlock(currentround).do();
-//     currentround += 1;
-//   }
-//   /* eslint-enable no-await-in-loop */
-//   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
-// };
+      if (
+        pendingInfo["pool-error"] != null &&
+        pendingInfo["pool-error"].length > 0
+      ) {
+        // If there was a pool error, then the transaction has been rejected!
+        throw new Error(
+            `Transaction Rejected pool error${pendingInfo["pool-error"]}`,
+        );
+      }
+    }
+    await algodclient.statusAfterBlock(currentround).do();
+    currentround += 1;
+  }
+  /* eslint-enable no-await-in-loop */
+  throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
+};
 
 // const optIn = async (client, account, assetIndex) =>
 //   sendASA(client, account, account, 0, assetIndex);
