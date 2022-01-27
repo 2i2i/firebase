@@ -123,24 +123,24 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
   });
 });
   
-  exports.ratingAdded = functions.runWith(runWithObj).firestore
-  .document("users/{userId}/ratings/{ratingId}")
-  .onCreate((change, context) => {
-      const meetingRating = change.get("rating");
-      const userId = context.params.userId;
-      return db.runTransaction(async (T) => {
-        const docRefUser = db.collection("users").doc(userId);
-        const docUser = await docRefUser.get();
-        const numRatings = docUser.get("numRatings") ?? 0;
-        const userRating = docUser.get("rating") ?? 1;
-        const newNumRatings = numRatings + 1;
-        const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
-        await docRefUser.update({
-          rating: newRating,
-          numRatings: newNumRatings,
-        });
-      });
+exports.ratingAdded = functions.runWith(runWithObj).firestore
+.document("users/{userId}/ratings/{ratingId}")
+.onCreate((change, context) => {
+  const meetingRating = change.get("rating");
+  const userId = context.params.userId;
+  return db.runTransaction(async (T) => {
+    const docRefUser = db.collection("users").doc(userId);
+    const docUser = await docRefUser.get();
+    const numRatings = docUser.get("numRatings") ?? 0;
+    const userRating = docUser.get("rating") ?? 1;
+    const newNumRatings = numRatings + 1;
+    const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
+    await docRefUser.update({
+      rating: newRating,
+      numRatings: newNumRatings,
     });
+  });
+});
 
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
@@ -242,8 +242,69 @@ const settleMeeting = async (docRef, meeting) => {
     "duration": meeting.duration,
   };
   if (txId) updateObj["txns.unlock"] = txId;
-  return docRef.update(updateObj);
+  await docRef.update(updateObj); // not in parallel in case of early bugs
+
+  const p1 = updateTopSpeeds(meeting);
+  const p2 = updateTopDurations(meeting);
+  return Promise.all([p1, p2]);
 };
+
+const updateTopDurations = async (meeting) => updateTopMeetings("topDurations", "duration", meeting);
+const updateTopSpeeds = async (meeting) => updateTopMeetings("topSpeeds", "speed.num", meeting);
+const addTopMeeting = async (T, colRef, meeting) => {
+  const docRefB = db.collection("users").doc(meeting.B);
+  const docB = await T.get(docRefB);
+  const nameB = docB.get("name");
+  const docRefNewTopMeeting = colRef.doc();
+  T.create(docRefNewTopMeeting, {
+    B: meeting.B,
+    name: nameB,
+    duration: meeting.duration,
+    speed: meeting.speed,
+    ts: meeting.end,
+  });
+  return T;
+}
+const updateTopMeetings = async (collection, field, meeting) => {
+  const colRef = db.collection(collection);
+  const query = colRef.orderBy(field, "desc").orderBy("ts");
+  return db.runTransaction(async (T) => {
+    const querySnapshot = await T.get(query);
+    console.log('querySnapshot.size', querySnapshot.size);
+    
+    if (querySnapshot.size < 10) return addTopMeeting(T, colRef, meeting);
+
+    for (let i = 0; i < querySnapshot.size; i++) {
+      const queryDocSnapshot = querySnapshot.docs[i];
+      const docField = queryDocSnapshot.get(field);
+      console.log('i', i, docSpeedNum, queryDocSnapshot.get("ts"));
+
+      if (docField < meeting[field]) {
+        console.log('yay');
+
+        const docRefB = db.collection("users").doc(meeting.B);
+        const docB = await T.get(docRefB);
+        const nameB = docB.get("name");
+        const docRefNewTopMeeting = colRef.doc();
+
+        // remove last top meeting
+        const queryDocSnapshotLast = querySnapshot.docs[querySnapshot.size - 1];
+        T.delete(queryDocSnapshotLast.ref);
+
+        // T = addTopMeeting(T, colRef, meeting);
+        T.create(docRefNewTopMeeting, {
+          B: meeting.B,
+          name: nameB,
+          duration: meeting.duration,
+          speed: meeting.speed,
+          ts: meeting.end,
+        });
+
+        break;
+      }
+    }
+  });
+}
 
 const settleALGOMeeting = async (
     algodclient,
@@ -352,91 +413,31 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   await Promise.all(promises);
 });
 
-exports.topDurationMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => {
-  // context.app will be undefined if the request doesn't include a valid
-  // App Check token.
-  if (context.app == undefined) {
-    throw new functions.https.HttpsError(
-        "failed-precondition",
-        "The function must be called from an App Check verified app.");
-  }
-  const uid = context.auth.uid;
-  if (!uid) return;
+// const sendALGO = async (client, fromAccount, toAccount, amount) => {
+//   // txn
+//   const suggestedParams = await client.getTransactionParams().do();
+//   // const note = new Uint8Array(Buffer.from('', 'utf8'));
+//   const transactionOptions = {
+//     from: fromAccount.addr,
+//     to: toAccount.addr,
+//     amount,
+//     // note,
+//     suggestedParams,
+//   };
+//   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
+//       transactionOptions,
+//   );
 
-  return topMeetings("duration");
-});
-exports.topSpeedMeetings = functions.runWith(runWithObj).https.onCall(async (data, context) => {
-  // context.app will be undefined if the request doesn't include a valid
-  // App Check token.
-  if (context.app == undefined) {
-    throw new functions.https.HttpsError(
-        "failed-precondition",
-        "The function must be called from an App Check verified app.");
-  }
-  const uid = context.auth.uid;
-  if (!uid) return;
+//   // sign
+//   const signedTxn = txn.signTxn(fromAccount.sk);
 
-  return topMeetings("speed.num");
-});
-const topMeetings = async (order) => {
-  const querySnapshot = await db
-      .collection("meetings")
-      .where("settled", "==", true)
-      .select("B", "duration", "speed")
-      .where("speed.assetId", "==", 0)
-      .orderBy(order, "desc")
-      .limit(10)
-      .get();
+//   // send raw
+//   const {txId} = await client.sendRawTransaction(signedTxn).do();
+//   console.log("txId");
+//   console.log(txId);
 
-
-  const topMeetings = querySnapshot.docs.map((doc) => {
-    const data = doc.data();
-    const B = data.B;
-    const duration = data.duration;
-    const speed = data.speed;
-    return {
-      id: doc.id,
-      B: B,
-      duration: duration,
-      speed: speed,
-    };
-  });
-
-  const futures = topMeetings.map((topMeeting) => {
-    return db.collection("users").doc(topMeeting.B).get().then((user) => {
-      topMeeting.name = user.get("name");
-      return topMeeting;
-    });
-  });
-
-  return Promise.all(futures);
-};
-
-const sendALGO = async (client, fromAccount, toAccount, amount) => {
-  // txn
-  const suggestedParams = await client.getTransactionParams().do();
-  // const note = new Uint8Array(Buffer.from('', 'utf8'));
-  const transactionOptions = {
-    from: fromAccount.addr,
-    to: toAccount.addr,
-    amount,
-    // note,
-    suggestedParams,
-  };
-  const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
-      transactionOptions,
-  );
-
-  // sign
-  const signedTxn = txn.signTxn(fromAccount.sk);
-
-  // send raw
-  const {txId} = await client.sendRawTransaction(signedTxn).do();
-  console.log("txId");
-  console.log(txId);
-
-  return txId;
-};
+//   return txId;
+// };
 
 // exports.updateFX = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
 //   const colRef = db.collection("FX");
@@ -696,5 +697,9 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
 
 // test({meetingId: '9IHLdjOw9eHB0QEkpgYB'})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   const meeting = {bid: 'TqY95mhcNCEEVW9q0eIQ', duration: 13, speed: {num: 1, assetId: 0}, addrA: 'V7MRVBP4VI6KJAL2URUZBN3TY5MZIJ7HMJINSFICSFSRQCSVNIJW5LMPNQ', addrB: '2I2IXTP67KSNJ5FQXHUJP5WZBX2JTFYEBVTBYFF3UUJ3SQKXSZ3QHZNNPY'};
+//   const meetingDoc = await db.collection("meetings").doc("1gk92xnKkrsC3XD532bn").get();
+//   const meeting = meetingDoc.data();
+//   // console.log(meeting);
+//   // const meeting = {B: "03QNKgunbnSYSuZPyAHaVHGbTTz1", end: admin.firestore.Timestamp(), bid: "TqY95mhcNCEEVW9q0eIQ", duration: 13, speed: {num: 1, assetId: 0}, addrA: "V7MRVBP4VI6KJAL2URUZBN3TY5MZIJ7HMJINSFICSFSRQCSVNIJW5LMPNQ", addrB: "2I2IXTP67KSNJ5FQXHUJP5WZBX2JTFYEBVTBYFF3UUJ3SQKXSZ3QHZNNPY"};
+//   return updateTopSpeeds(meeting);
 // });
