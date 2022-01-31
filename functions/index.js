@@ -2,6 +2,7 @@
 // firebase functions:shell
 // firebase deploy --only functions:ratingAdded
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
+// firebase emulators:start
 
 const functions = require("firebase-functions");
 const algosdk = require("algosdk");
@@ -74,7 +75,6 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
 });
 
 exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
-
   const uid = context.auth.uid;
   const bidId = data.bidId;
 
@@ -92,7 +92,7 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     console.log("note", note);
     const lookup = await indexerTESTNET.lookupAccountTransactions(SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
     console.log("lookup.transactions.length", lookup.transactions.length);
-    
+
     if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
     const txn = lookup.transactions[0];
     const sender = txn.sender;
@@ -102,10 +102,10 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     const receiver = paymentTxn.receiver;
     console.log("receiver", receiver, receiver !== SYSTEM_ACCOUNT);
     if (receiver !== SYSTEM_ACCOUNT) return; // CAREFUL - if we ever change this, cancel would fail
-    
+
     const energyA = paymentTxn.amount - 2 * MIN_TXN_FEE; // keep 2 fees
     const txId = await runUnlock(clientTESTNET, energyA, 0, 0, addrA, addrA);
-    
+
     const B = docBidOut.get("B");
     console.log("B", B);
     const docRefBidIn = db.collection("users").doc(B).collection("bidInsPublic").doc(bidId);
@@ -122,25 +122,25 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     });
   });
 });
-  
+
 exports.ratingAdded = functions.runWith(runWithObj).firestore
-.document("users/{userId}/ratings/{ratingId}")
-.onCreate((change, context) => {
-  const meetingRating = change.get("rating");
-  const userId = context.params.userId;
-  return db.runTransaction(async (T) => {
-    const docRefUser = db.collection("users").doc(userId);
-    const docUser = await docRefUser.get();
-    const numRatings = docUser.get("numRatings") ?? 0;
-    const userRating = docUser.get("rating") ?? 1;
-    const newNumRatings = numRatings + 1;
-    const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
-    await docRefUser.update({
-      rating: newRating,
-      numRatings: newNumRatings,
+    .document("users/{userId}/ratings/{ratingId}")
+    .onCreate((change, context) => {
+      const meetingRating = change.get("rating");
+      const userId = context.params.userId;
+      return db.runTransaction(async (T) => {
+        const docRefUser = db.collection("users").doc(userId);
+        const docUser = await docRefUser.get();
+        const numRatings = docUser.get("numRatings") ?? 0;
+        const userRating = docUser.get("rating") ?? 1;
+        const newNumRatings = numRatings + 1;
+        const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
+        await docRefUser.update({
+          rating: newRating,
+          numRatings: newNumRatings,
+        });
+      });
     });
-  });
-});
 
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
@@ -224,87 +224,35 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore
 const settleMeeting = async (docRef, meeting) => {
   console.log("settleMeeting, meeting", meeting);
 
-  let txId = null;
+  let result = null;
   if (meeting.speed.num !== 0) {
     if (meeting.speed.assetId === 0) {
-      txId = await settleALGOMeeting(clientTESTNET, docRef.id, meeting);
+      const result = await settleALGOMeeting(clientTESTNET, docRef.id, meeting);
     } else {
       // txId = await settleASAMeeting(clientTESTNET, meeting);
       throw Error("no ASA at the moment");
     }
   }
 
-  console.log("settleMeeting, txIds", txIds);
+  console.log("settleMeeting, result", result);
 
   // update meeting
   const updateObj = {
-    "settled": true,
-    "duration": meeting.duration,
+    settled: true,
+    duration: meeting.duration,
   };
-  if (txId) updateObj["txns.unlock"] = txId;
+  if (result) {
+    updateObj["txns.unlock"] = result.txId;
+    updateObj["energy.A"] = result.energyA;
+    updateObj["energy.Creator"] = result.energyCreator;
+    updateObj["energy.B"] = result.energyB ;
+  }
   await docRef.update(updateObj); // not in parallel in case of early bugs
 
   const p1 = updateTopSpeeds(meeting);
   const p2 = updateTopDurations(meeting);
   return Promise.all([p1, p2]);
 };
-
-const updateTopDurations = async (meeting) => updateTopMeetings("topDurations", "duration", meeting);
-const updateTopSpeeds = async (meeting) => updateTopMeetings("topSpeeds", "speed.num", meeting);
-const addTopMeeting = async (T, colRef, meeting) => {
-  const docRefB = db.collection("users").doc(meeting.B);
-  const docB = await T.get(docRefB);
-  const nameB = docB.get("name");
-  const docRefNewTopMeeting = colRef.doc();
-  T.create(docRefNewTopMeeting, {
-    B: meeting.B,
-    name: nameB,
-    duration: meeting.duration,
-    speed: meeting.speed,
-    ts: meeting.end,
-  });
-  return T;
-}
-const updateTopMeetings = async (collection, field, meeting) => {
-  const colRef = db.collection(collection);
-  const query = colRef.orderBy(field, "desc").orderBy("ts");
-  return db.runTransaction(async (T) => {
-    const querySnapshot = await T.get(query);
-    console.log('querySnapshot.size', querySnapshot.size);
-    
-    if (querySnapshot.size < 10) return addTopMeeting(T, colRef, meeting);
-
-    for (let i = 0; i < querySnapshot.size; i++) {
-      const queryDocSnapshot = querySnapshot.docs[i];
-      const docField = queryDocSnapshot.get(field);
-      console.log('i', i, docSpeedNum, queryDocSnapshot.get("ts"));
-
-      if (docField < meeting[field]) {
-        console.log('yay');
-
-        const docRefB = db.collection("users").doc(meeting.B);
-        const docB = await T.get(docRefB);
-        const nameB = docB.get("name");
-        const docRefNewTopMeeting = colRef.doc();
-
-        // remove last top meeting
-        const queryDocSnapshotLast = querySnapshot.docs[querySnapshot.size - 1];
-        T.delete(queryDocSnapshotLast.ref);
-
-        // T = addTopMeeting(T, colRef, meeting);
-        T.create(docRefNewTopMeeting, {
-          B: meeting.B,
-          name: nameB,
-          duration: meeting.duration,
-          speed: meeting.speed,
-          ts: meeting.end,
-        });
-
-        break;
-      }
-    }
-  });
-}
 
 const settleALGOMeeting = async (
     algodclient,
@@ -328,18 +276,27 @@ const settleALGOMeeting = async (
 
   const maxEnergy = paymentTxn.amount - 4 * MIN_TXN_FEE;
   console.log("maxEnergy", maxEnergy);
-
-  const energy = Math.min(meeting.duration * meeting.speed.num, maxEnergy);
+  if (maxEnergy !== meeting.budget) console.error('maxEnergy !== meeting.budget', maxEnergy, meeting.budget);
+  
+  let energy = maxEnergy;
+  if (meeting.status !== "END_TIMER") energy = Math.min(meeting.duration * meeting.speed.num, energy);
   console.log("energy", energy);
 
   const energyB = Math.ceil(0.9 * energy);
   console.log("energyB", energyB);
-  const energyFee = energy - energyB;
-  console.log("energyFee", energyFee);
-  const energyA = maxEnergy - energyB - energyFee + (energyB === 0 ? MIN_TXN_FEE : 0) + (energyFee === 0 ? MIN_TXN_FEE : 0);
+  const energyCreator = energy - energyB;
+  console.log("energyCreator", energyCreator);
+  const energyA = maxEnergy - energyB - energyCreator + (energyB === 0 ? MIN_TXN_FEE : 0) + (energyCreator === 0 ? MIN_TXN_FEE : 0);
   console.log("energyA", energyA);
 
-  return runUnlock(algodclient, energyA, energyFee, energyB, meeting.addrA, meeting.addrB);
+  const txId = await runUnlock(algodclient, energyA, energyCreator, energyB, meeting.addrA, meeting.addrB);
+
+  return {
+    txId: txId,
+    energyA: energyA,
+    energyCreator: energyCreator, 
+    energyB: energyB,
+  }
 };
 
 const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB) => {
@@ -367,7 +324,7 @@ const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB)
 
   // send
   try {
-    const { txId } = await algodclient.sendRawTransaction([stateTxnSigned]).do();
+    const {txId} = await algodclient.sendRawTransaction([stateTxnSigned]).do();
     console.log("runUnlock, sent", txId);
 
     // confirm
@@ -380,7 +337,7 @@ const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB)
     console.log("error", e);
     throw Error(e);
   }
-}
+};
 
 // every minute
 exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
@@ -556,6 +513,66 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   }
   /* eslint-enable no-await-in-loop */
   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
+};
+
+
+const updateTopDurations = async (meeting) => updateTopMeetings("topDurations", "duration", meeting);
+const updateTopSpeeds = async (meeting) => updateTopMeetings("topSpeeds", "speed.num", meeting);
+const addTopMeeting = async (T, colRef, meeting) => {
+  const docRefB = db.collection("users").doc(meeting.B);
+  const docB = await T.get(docRefB);
+  const nameB = docB.get("name");
+  const docRefNewTopMeeting = colRef.doc();
+  T.create(docRefNewTopMeeting, {
+    B: meeting.B,
+    name: nameB,
+    duration: meeting.duration,
+    speed: meeting.speed,
+    ts: meeting.end,
+  });
+  return T;
+};
+const updateTopMeetings = async (collection, field, meeting) => {
+  if (meeting.duration === 0) return;
+  if (meeting.speed.num === 0) return;
+  const colRef = db.collection(collection);
+  const query = colRef.orderBy(field, "desc").orderBy("ts");
+  return db.runTransaction(async (T) => {
+    const querySnapshot = await T.get(query);
+    console.log("querySnapshot.size", querySnapshot.size);
+
+    if (querySnapshot.size < 10) return addTopMeeting(T, colRef, meeting);
+
+    for (let i = 0; i < querySnapshot.size; i++) {
+      const queryDocSnapshot = querySnapshot.docs[i];
+      const docField = queryDocSnapshot.get(field);
+      console.log("i", i, docField, queryDocSnapshot.get("ts"));
+
+      if (docField < meeting[field]) {
+        console.log("yay");
+
+        const docRefB = db.collection("users").doc(meeting.B);
+        const docB = await T.get(docRefB);
+        const nameB = docB.get("name");
+        const docRefNewTopMeeting = colRef.doc();
+
+        // remove last top meeting
+        const queryDocSnapshotLast = querySnapshot.docs[querySnapshot.size - 1];
+        T.delete(queryDocSnapshotLast.ref);
+
+        // T = addTopMeeting(T, colRef, meeting);
+        T.create(docRefNewTopMeeting, {
+          B: meeting.B,
+          name: nameB,
+          duration: meeting.duration,
+          speed: meeting.speed,
+          ts: meeting.end,
+        });
+
+        break;
+      }
+    }
+  });
 };
 
 // const optIn = async (client, account, assetIndex) =>

@@ -7,7 +7,7 @@ service cloud.firestore {
 
     // all
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
 
     // general
@@ -16,21 +16,36 @@ service cloud.firestore {
     }
 
     // users
-    function meetingConsistent(userId) {
+    function meetingConsistentForLock(userId) {
       let meeting = getAfter(/databases/$(database)/documents/meetings/$(request.resource.data.meeting));
-      let updatingOwnAsB = meeting.data.B == request.auth.uid && request.auth.uid == userId;
+      let updatingOwnAsB = meeting.data.B == request.auth.uid && userId == request.auth.uid;
       let updatingA = meeting.data.A == userId;
-      return meeting.data.status == "ACCEPTED_B" && (updatingOwnAsB || updatingA);
+      return meeting.data.status == 'ACCEPTED_B' && (updatingOwnAsB || updatingA);
     }
-    function meetingConsistentForUnlock(userId) {
-      let meeting = get(/databases/$(database)/documents/meetings/$(request.resource.data.meeting));
-      
-      let updatingOwnAsB = meeting.data.B == request.auth.uid && request.auth.uid == userId;
-      let updatingA = meeting.data.A == userId;
-      return meeting.data.status == "ACCEPTED_B" && (updatingOwnAsB || updatingA);
+    function meetingConsistentForUnlockBefore() {
+      let meetingBefore = get(/databases/$(database)/documents/meetings/$(resource.data.meeting));
+      let amA = meetingBefore.data.A == request.auth.uid;
+      let amB = meetingBefore.data.B == request.auth.uid;
+      let ended = meetingBefore.data.status.matches('END_.*');
+      return (amA || amB) && !ended;
+    }
+    function meetingConsistentForUnlockAfter() {
+      let meetingAfter = getAfter(/databases/$(database)/documents/meetings/$(resource.data.meeting));
+      let ending = meetingAfter.data.status.matches('END_.*');
+      return ending;
+    }
+    function meetingConsistentForUnlock() {
+      return meetingConsistentForUnlockBefore() && meetingConsistentForUnlockAfter();
     }
     function changeOnlyMeeting() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['meeting']);
+      return request.resource.data.diff(resource.data).affectedKeys() == ['meeting'].toSet();
+    }
+    function userUpdate() {
+      let fullUserFields = ['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeat', 'tags', 'rule', 'loungeHistory', 'loungeHistoryIndex'];
+      let isFullUser = resource.data.keys().hasAll(fullUserFields);
+      let k = request.resource.data.diff(resource.data).affectedKeys();
+      let isUpdate = k.hasOnly(['status', 'bio', 'name', 'heartbeat', 'tags', 'rule']);
+      return isFullUser && isUpdate;
     }
     match /users/{userId} {
       // any logged in user can read
@@ -39,16 +54,16 @@ service cloud.firestore {
       // only self user can write
       // resource.data.meeting != null to avoid heartbeats of users that do not exist anymore
       // rule for update bio, name, tags, heartbeat, status
-      //allow update: if request.auth != null && request.auth.uid == userId && resource.data.keys().hasAll(['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeat', 'tags']);
+      allow update: if request.auth != null && request.auth.uid == userId && userUpdate();
 
       // TODO to secure more, add bid to user (null or current bid). then rules can check for bid existance and consistency
       // rule for locking user
-      allow update: if request.auth != null && resource.data.meeting == null && changeOnlyMeeting() && meetingConsistent(userId);
+      allow update: if request.auth != null && resource.data.meeting == null && changeOnlyMeeting() && meetingConsistentForLock(userId);
       // rule for unlocking user
-      allow update: if request.auth != null && resource.data.meeting != null && changeOnlyMeeting() && meetingConsistent(userId);
+      allow update: if request.auth != null && resource.data.meeting != null && changeOnlyMeeting() && meetingConsistentForUnlock();
     }
 
-    match /users/{userId}/private/{document=**} {
+    match /users/{userId}/private/main {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
@@ -56,17 +71,18 @@ service cloud.firestore {
     // bidId matches across bidIn and bidOut
     match /users/{userId}/bidOuts/{bidId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['B', 'speed', 'net', 'addrA', 'active', 'txId', 'budget'].toSet();
-      allow update: if request.auth != null && request.auth.uid == userId && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active']);
+      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['B', 'speed', 'net', 'addrA', 'active', 'txns', 'budget'].toSet();
+      allow update: if request.auth != null && request.auth.uid == userId && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys() == ['active'].toSet();
     }
-    match /users/{userId}/bidIns/{bidId} {
+    match /users/{userId}/bidInsPublic/{bidId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['speed', 'net', 'active'].toSet();
-      allow update: if request.auth != null && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active']) && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidIns/$(bidId)/private/main).data.A;
+      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['speed', 'net', 'active', 'ts', 'rule', 'budget'].toSet();
+      allow update: if request.auth != null && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys() == ['active'].toSet() && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidInsPrivate/$(bidId)).data.A;
     }
-    match /users/{userId}/bidIns/{bidId}/private/main {
+    match /users/{userId}/bidInsPrivate/{bidId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.resource.data.A == request.auth.uid && request.resource.data.keys().toSet() == ['A', 'addrA', 'comment', 'txId', 'budget'].toSet();
+      allow create: if request.auth != null && request.resource.data.A == request.auth.uid && request.resource.data.keys().toSet() == ['A', 'addrA', 'comment', 'txns', 'active'].toSet();
+      allow update: if request.auth != null && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys() == ['active'].toSet() && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidInsPrivate/$(bidId)).data.A;
     }
 
     // meeting
@@ -87,17 +103,16 @@ service cloud.firestore {
              request.resource.data.status == 'END_DISCONNECT';
     }
     function alreadyEnded() {
-      return resource.data.status.matches('END_*');
+      return resource.data.status.matches('END_.*');
     }
     function isCorrectEndPath() {
       return (request.resource.data.status == 'END_TIMER' && (resource.data.status == 'ACCEPTED_B' || resource.data.status == 'CALL_STARTED')) ||
-             (request.resource.data.status == 'END_A' && request.auth.uid == resource.data.A && (resource.data.status == 'ACCEPTED_B' || resource.data.status == 'CALL_STARTED')) ||
-             (request.resource.data.status == 'END_B' && request.auth.uid == resource.data.B && (resource.data.status == 'ACCEPTED_B' || resource.data.status == 'CALL_STARTED'));
+             (request.resource.data.status == 'END_A' && request.auth.uid == resource.data.A && (resource.data.status == 'ROOM_CREATED' || resource.data.status.matches('RECEIVED_REMOTE_.') || resource.data.status == 'CALL_STARTED')) ||
+             (request.resource.data.status == 'END_B' && request.auth.uid == resource.data.B && (resource.data.status == 'ROOM_CREATED' || resource.data.status.matches('RECEIVED_REMOTE_.') || resource.data.status == 'CALL_STARTED')) ||
+             request.resource.data.status == 'END_DISCONNECT';
     }
     function hasCorrectFieldsForEnd() {
-      let k = request.resource.data.diff(resource.data).affectedKeys();
-      return k.hasAll(['status', 'statusHistory', 'active', 'end']) &&
-            k.hasOnly(['status', 'statusHistory', 'active', 'end', 'duration']);
+      return request.resource.data.diff(resource.data).affectedKeys() == ['status', 'statusHistory', 'active', 'end'].toSet();
     }
     function isEnd() {
       return !alreadyEnded() && isEndReason() && isCorrectEndPath() && hasCorrectFieldsForEnd();
@@ -115,29 +130,27 @@ service cloud.firestore {
 
     // create meeting
     function hasCorrectFieldsForCreate() {
-      return request.resource.data.keys().toSet() == ['active', 'settled', 'A', 'B', 'addrA', 'addrB', 'budget', 'start', 'end', 'duration', 'txns', 'status', 'statusHistory', 'net', 'speed', 'bid', 'room', 'coinFlowsA', 'coinFlowsB'].toSet();
+      return request.resource.data.keys().toSet() == ['active', 'settled', 'A', 'B', 'addrA', 'addrB', 'energy', 'start', 'end', 'duration', 'txns', 'status', 'statusHistory', 'net', 'speed', 'room', 'coinFlowsA', 'coinFlowsB', 'lounge'].toSet();
     }
     function hasCorrectValuesForCreate() {
       return request.auth.uid == request.resource.data.B &&
              request.resource.data.active &&
              !request.resource.data.settled &&
-             ((request.resource.data.speed.num == 0 && request.resource.data.budget == 0) || request.resource.data.budget == null) &&
              request.resource.data.start == null &&
              request.resource.data.end == null &&
              request.resource.data.duration == null &&
-             request.resource.data.status == "ACCEPTED_B" &&
+             request.resource.data.status == 'ACCEPTED_B' &&
              request.resource.data.net != null &&
              request.resource.data.speed != null &&
-             request.resource.data.bid != null &&
              request.resource.data.room == null;
     }
-    function bidsExistForCreate() {
-      let bidOut = get(/databases/$(database)/documents/users/$(request.resource.data.A)/bidOuts/$(request.resource.data.bid));
-      let bidInPrivate = get(/databases/$(database)/documents/users/$(request.resource.data.B)/bidIns/$(request.resource.data.bid)/private/main);
-      return bidOut.data.B == request.auth.uid  && bidInPrivate.data.A == request.resource.data.A;
+    function bidsExistForCreate(meetingId) {
+      let bidOut = get(/databases/$(database)/documents/users/$(request.resource.data.A)/bidOuts/$(meetingId));
+      let bidInPrivate = get(/databases/$(database)/documents/users/$(request.resource.data.B)/bidInsPrivate/$(meetingId));
+      return bidOut.data.B == request.auth.uid && bidInPrivate.data.A == request.resource.data.A;
     }
     match /meetings/{meetingId} {
-      allow create: if request.auth != null && hasCorrectFieldsForCreate() && hasCorrectValuesForCreate() && bidsExistForCreate();
+      allow create: if request.auth != null && hasCorrectFieldsForCreate() && hasCorrectValuesForCreate() && bidsExistForCreate(meetingId);
     }
 
     // ratings
@@ -147,6 +160,14 @@ service cloud.firestore {
     match /users/{userId}/ratings/{meetingId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.keys().toSet() == ['rating', 'comment'].toSet() && isAOrB(get(/databases/$(database)/documents/meetings/$(meetingId)).data);
+    }
+
+    // top
+    match /topSpeeds/{id} {
+      allow read: if request.auth != null;
+    }
+    match /topDurations/{id} {
+      allow read: if request.auth != null;
     }
   }
 }
