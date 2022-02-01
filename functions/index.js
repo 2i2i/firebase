@@ -187,18 +187,25 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
       } else {
         loungeHistory[loungeHistoryIndex] = lounge;
       }
-
       T.update(docRefB, {
         loungeHistory: loungeHistory,
         loungeHistoryIndex: loungeHistoryIndex,
       });
+      console.log("meetingUpdated, new loungeHistory");
+
+      // start: earlier of RECEIVED_REMOTE_A/B
+      let start = admin.firestore.FieldValue.serverTimestamp();
+      for (const s of newMeeting.statusHistory) {
+        if (s.value === "RECEIVED_REMOTE_A" || s.value === "RECEIVED_REMOTE_B") start = s.ts;
+      }
+      console.log("meetingUpdated, start", start);
 
       T.update(change.after.ref, {
-        start: admin.firestore.FieldValue.serverTimestamp(),
+        start: start,
         status: "CALL_STARTED",
         statusHistory: admin.firestore.FieldValue.arrayUnion({
           value: "CALL_STARTED",
-          ts: admin.firestore.Timestamp.now(),
+          ts: start,
         }),
       });
     });
