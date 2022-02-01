@@ -1,6 +1,13 @@
+// main actions:
+// createBid - A
+// acceptBid - B
+// acceptMeeting - A
+// createRoom - A
+
 // firebase use
 // firebase functions:shell
 // firebase deploy --only functions:ratingAdded
+// firebase deploy --only firestore:rules
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -38,13 +45,13 @@ const LOUNGE_DICT = {
   "eccentric": 2,
   "lurker": 3,
 };
-const MAX_LOUNGE_HISTORY = 100;
+const MAX_LOUNGE_HISTORY = 10;
 
 const runWithObj = {minInstances: 0, memory: "128MB"};
 
 exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
   const docRefUser = db.collection("users").doc(user.uid);
-  const createUserFuture = docRefUser.create({
+  return docRefUser.create({
     status: "ONLINE",
     meeting: null,
     bio: "",
@@ -66,12 +73,9 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
     },
     loungeHistory: [],
     loungeHistoryIndex: -1,
-  });
-  const createUserPrivateFuture = docRefUser.collection("private").doc("main").create({
     blocked: [],
     friends: [],
   });
-  return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
 exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
@@ -159,67 +163,65 @@ exports.meetingCreated = functions.runWith(runWithObj).firestore
         T.update(bidInPrivateRef, obj);
       });
     });
-exports.meetingUpdated = functions.runWith(runWithObj).firestore
-    .document("meetings/{meetingId}")
-    .onUpdate(async (change, context) => {
-      const oldMeeting = change.before.data();
-      const newMeeting = change.after.data();
+exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meetings/{meetingId}").onUpdate(async (change, context) => {
+  const oldMeeting = change.before.data();
+  const newMeeting = change.after.data();
 
-      // has status changed?
-      console.log("meetingUpdated, oldMeeting.status, newMeeting.status", oldMeeting.status, newMeeting.status);
-      if (oldMeeting.status === newMeeting.status) return 0;
+  // has status changed?
+  console.log("meetingUpdated, oldMeeting.status, newMeeting.status", oldMeeting.status, newMeeting.status);
+  if (oldMeeting.status === newMeeting.status) return 0;
 
-      if ((newMeeting.status === "RECEIVED_REMOTE_A" && oldMeeting.status == "RECEIVED_REMOTE_B") ||
+  if ((newMeeting.status === "RECEIVED_REMOTE_A" && oldMeeting.status == "RECEIVED_REMOTE_B") ||
            newMeeting.status === "RECEIVED_REMOTE_B" && oldMeeting.status == "RECEIVED_REMOTE_A") {
-        return db.runTransaction(async (T) => {
-          const docRefB = db.collection("users").doc(newMeeting.B);
-          const docB = await T.get(docRefB);
+    return db.runTransaction(async (T) => {
+      const docRefB = db.collection("users").doc(newMeeting.B);
+      const docB = await T.get(docRefB);
 
-          // lounge history
-          const loungeHistory = docB.get("loungeHistory");
-          const loungeHistoryIndexDB = docB.get("loungeHistoryIndex");
-          const lounge = LOUNGE_DICT[newMeeting.lounge];
-          const loungeHistoryIndex = (loungeHistoryIndexDB + 1) % MAX_LOUNGE_HISTORY;
-          if (loungeHistory.length < MAX_LOUNGE_HISTORY) {
-            loungeHistory.push(lounge);
-          } else {
-            loungeHistory[loungeHistoryIndex] = lounge;
-          }
-
-          return T.update(change.after.ref, {
-            start: admin.firestore.FieldValue.serverTimestamp(),
-            status: "CALL_STARTED",
-            statusHistory: admin.firestore.FieldValue.arrayUnion({
-              value: "CALL_STARTED",
-              ts: admin.firestore.Timestamp.now(),
-            }),
-            loungeHistory: loungeHistory,
-            loungeHistoryIndex: loungeHistoryIndex,
-          });
-        });
+      // lounge history
+      const loungeHistory = docB.get("loungeHistory");
+      const loungeHistoryIndexDB = docB.get("loungeHistoryIndex");
+      const lounge = LOUNGE_DICT[newMeeting.lounge];
+      const loungeHistoryIndex = (loungeHistoryIndexDB + 1) % MAX_LOUNGE_HISTORY;
+      if (loungeHistory.length < MAX_LOUNGE_HISTORY) {
+        loungeHistory.push(lounge);
+      } else {
+        loungeHistory[loungeHistoryIndex] = lounge;
       }
 
-      // is meeting done?
-      console.log("meetingUpdated, newMeeting.status", newMeeting.status);
-      if (!newMeeting.status.startsWith("END_")) return 0;
-
-      // unlock users
-      if (newMeeting.status === "END_DISCONNECT") {
-        const colRef = db.collection("users");
-        const A = newMeeting.A;
-        const B = newMeeting.B;
-        const docRefA = colRef.doc(A);
-        const docRefB = colRef.doc(B);
-        const unlockAPromise = docRefA.update({meeting: null});
-        const unlockBPromise = docRefB.update({meeting: null});
-        await Promise.all([unlockAPromise, unlockBPromise]);
-        console.log("meetingUpdated, users unlocked");
-      }
-
-      newMeeting.duration = newMeeting.start ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
-
-      return settleMeeting(change.after.ref, newMeeting);
+      return T.update(change.after.ref, {
+        start: admin.firestore.FieldValue.serverTimestamp(),
+        status: "CALL_STARTED",
+        statusHistory: admin.firestore.FieldValue.arrayUnion({
+          value: "CALL_STARTED",
+          ts: admin.firestore.Timestamp.now(),
+        }),
+        loungeHistory: loungeHistory,
+        loungeHistoryIndex: loungeHistoryIndex,
+      });
     });
+  }
+
+  // is meeting done?
+  console.log("meetingUpdated, newMeeting.status", newMeeting.status);
+  if (!newMeeting.status.startsWith("END_")) return 0;
+
+  // unlock users
+  if (newMeeting.status === "END_DISCONNECT") {
+    const colRef = db.collection("users");
+    const A = newMeeting.A;
+    const B = newMeeting.B;
+    const docRefA = colRef.doc(A);
+    const docRefB = colRef.doc(B);
+    const unlockAPromise = docRefA.update({meeting: null});
+    const unlockBPromise = docRefB.update({meeting: null});
+    await Promise.all([unlockAPromise, unlockBPromise]);
+    console.log("meetingUpdated, users unlocked");
+  }
+
+  newMeeting.duration = newMeeting.start ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
+
+  return settleMeeting(change.after.ref, newMeeting);
+});
 
 const settleMeeting = async (docRef, meeting) => {
   console.log("settleMeeting, meeting", meeting);
@@ -300,9 +302,7 @@ const settleALGOMeeting = async (
 };
 
 const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB) => {
-  const SYSTEM_PK = "journey party ecology bar field tattoo drop wasp save robot mouse camera two tissue potato fork blanket buyer swim laundry segment burst toast above enroll";
-  const accountCreator = algosdk.mnemonicToSecretKey(SYSTEM_PK);
-  // const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   const appArg0 = new TextEncoder().encode("UNLOCK");
   const appArg1 = algosdk.encodeUint64(energyA);
   const appArg2 = algosdk.encodeUint64(energyFee);
