@@ -69,20 +69,82 @@ service cloud.firestore {
 
     // bids
     // bidId matches across bidIn and bidOut
-    match /users/{userId}/bidOuts/{bidId} {
+    match /users/{userId}/bidOuts/{bidId} { // userId == A
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['B', 'speed', 'net', 'addrA', 'active', 'txns', 'budget'].toSet();
-      allow update: if request.auth != null && request.auth.uid == userId && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys() == ['active'].toSet();
+
+      // addBid rule: request.auth.uid == A
+      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['B', 'speed', 'net', 'addrA', 'active', 'txns', 'budget'].toSet() && publicAndPrivateBidsWillExist(request.resource.data.B, bidId);
+
+      // acceptMeeting rule: request.auth.uid == B
+      allow update: if request.auth != null && request.auth.uid == resource.data.B && fromActiveToInActive() && changeOnlyActive() && existsAfter(/databases/$(database)/documents/meetings/$(bidId));
+
+      // cancelOwnBid rule: request.auth.uid == A
+      allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive() && publicAndPrivateBidsWillBeInActive(resource.data.B, bidId);
+
+      // cancelNoShow rule: request.auth.uid == B
+      allow update: if request.auth != null && request.auth.uid == resource.data.B && fromActiveToInActive() && changeOnlyActive() && publicAndPrivateBidsWillBeInActive(resource.data.B, bidId);
     }
-    match /users/{userId}/bidInsPublic/{bidId} {
+    match /users/{userId}/bidInsPublic/{bidId} { // userId == B
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['speed', 'net', 'active', 'ts', 'rule', 'budget'].toSet();
-      allow update: if request.auth != null && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys() == ['active'].toSet() && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidInsPrivate/$(bidId)).data.A;
+
+      // addBid rule: request.auth.uid == A
+      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['speed', 'net', 'active', 'ts', 'rule', 'budget'].toSet() && outAndPrivateBidsWillExist(request.auth.uid, userId, bidId);
+
+      // acceptMeeting rule: request.auth.uid == B
+      allow update: if request.auth != null && request.auth.uid != userId && fromActiveToInActive() && changeOnlyActive() && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidInsPrivate/$(bidId)).data.A;
+
+      // cancelNoShow rule: request.auth.uid == B
+      allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive() && outAndPrivateBidsWillBeInActive(userId, bidId);
     }
-    match /users/{userId}/bidInsPrivate/{bidId} {
+    match /users/{userId}/bidInsPrivate/{bidId} { // userId == B
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.resource.data.A == request.auth.uid && request.resource.data.keys().toSet() == ['A', 'addrA', 'comment', 'txns', 'active'].toSet();
-      allow update: if request.auth != null && request.resource.data.active == false && request.resource.data.diff(resource.data).affectedKeys() == ['active'].toSet() && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidInsPrivate/$(bidId)).data.A;
+
+      // addBid rule: request.auth.uid == A
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.A && request.resource.data.keys().toSet() == ['A', 'addrA', 'comment', 'txns', 'active'].toSet() && outAndPublicBidsWillExist(request.auth.uid, userId, bidId);
+      
+      // acceptMeeting rule: request.auth.uid == B
+      allow update: if request.auth != null && request.auth.uid != userId && request.auth.uid == resource.data.A && fromActiveToInActive() && changeOnlyActive();
+
+      // cancelNoShow rule: request.auth.uid == B
+      allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive() && outAndPublicBidsWillBeInActive(resource.data.A, userId, bidId);
+    }
+
+    function fromActiveToInActive() {
+      return resource.data.active == true && request.resource.data.active == false;
+    }
+    function changeOnlyActive() {
+      return request.resource.data.diff(resource.data).affectedKeys() == ['active'].toSet();
+    }
+    function outAndPublicBidsWillBeInActive(A, B, bidId) {
+      let bidInPublic = getAfter(/databases/$(database)/documents/users/$(B)/bidInsPublic/$(bidId));
+      let bidOut = getAfter(/databases/$(database)/documents/users/$(A)/bidOuts/$(bidId));
+      return !bidOut.active && !bidInPublic.active;
+    }
+    function outAndPrivateBidsWillBeInActive(B, bidId) {
+      let bidInPrivate = getAfter(/databases/$(database)/documents/users/$(B)/bidInsPrivate/$(bidId));
+      let A = bidInPrivate.data.A;
+      let bidOut = getAfter(/databases/$(database)/documents/users/$(A)/bidOuts/$(bidId)); // TODO separate into own function for short-circuiting this eval
+      return !bidOut.active && !bidInPrivate.active;
+    }
+    function publicAndPrivateBidsWillBeInActive(B, bidId) {
+      let bidInPublic = getAfter(/databases/$(database)/documents/users/$(B)/bidInsPublic/$(bidId));
+      let bidInPrivate = getAfter(/databases/$(database)/documents/users/$(B)/bidInsPrivate/$(bidId));
+      return !bidInPublic.active && !bidInPrivate.active;
+    }
+    function outAndPublicBidsWillExist(A, B, bidId) {
+      let out = existsAfter(/databases/$(database)/documents/users/$(A)/bidOuts/$(bidId));
+      let public = existsAfter(/databases/$(database)/documents/users/$(B)/bidInsPublic/$(bidId));
+      return out && public;
+    }
+    function outAndPrivateBidsWillExist(A, B, bidId) {
+      let out = existsAfter(/databases/$(database)/documents/users/$(A)/bidOuts/$(bidId));
+      let private = existsAfter(/databases/$(database)/documents/users/$(B)/bidInsPrivate/$(bidId));
+      return out && private;
+    }
+    function publicAndPrivateBidsWillExist(B, bidId) {
+      let public = existsAfter(/databases/$(database)/documents/users/$(B)/bidInsPublic/$(bidId));
+      let private = existsAfter(/databases/$(database)/documents/users/$(B)/bidInsPrivate/$(bidId));
+      return public && private;
     }
 
     // meeting
