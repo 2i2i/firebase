@@ -1,3 +1,9 @@
+// main actions:
+// createBid - A
+// acceptBid - B
+// acceptMeeting - A
+// createRoom - A
+
 // firebase use
 // firebase functions:shell
 // firebase deploy --only functions:ratingAdded
@@ -44,7 +50,7 @@ const runWithObj = {minInstances: 0, memory: "128MB"};
 
 exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
   const docRefUser = db.collection("users").doc(user.uid);
-  const createUserFuture = docRefUser.create({
+  return docRefUser.create({
     status: "ONLINE",
     meeting: null,
     bio: "",
@@ -66,12 +72,9 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
     },
     loungeHistory: [],
     loungeHistoryIndex: -1,
-  });
-  const createUserPrivateFuture = docRefUser.collection("private").doc("main").create({
     blocked: [],
     friends: [],
   });
-  return Promise.all([createUserFuture, createUserPrivateFuture]);
 });
 
 exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
@@ -300,7 +303,6 @@ const settleALGOMeeting = async (
 };
 
 const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB) => {
-  const SYSTEM_PK = "journey party ecology bar field tattoo drop wasp save robot mouse camera two tissue potato fork blanket buyer swim laundry segment burst toast above enroll";
   const accountCreator = algosdk.mnemonicToSecretKey(SYSTEM_PK);
   // const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   const appArg0 = new TextEncoder().encode("UNLOCK");

@@ -1,3 +1,9 @@
+// main actions:
+// createBid - A
+// acceptBid - B
+// acceptMeeting - A
+// createRoom - A
+
 // https://firebase.google.com/docs/firestore/security/rules-structure?authuser=0#granular_operations
 // https://firebase.google.com/docs/reference/rules/rules.MapDiff
 // get, list; create, update, delete
@@ -10,11 +16,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    /////////////////////////
     // general
     function isAOrB(data) {
       return data.A == request.auth.uid || data.B == request.auth.uid;
     }
 
+    /////////////////////////
     // users
     function meetingConsistentForLock(userId) {
       let meeting = getAfter(/databases/$(database)/documents/meetings/$(request.resource.data.meeting));
@@ -41,10 +49,10 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys() == ['meeting'].toSet();
     }
     function userUpdate() {
-      let fullUserFields = ['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeat', 'tags', 'rule', 'loungeHistory', 'loungeHistoryIndex'];
+      let fullUserFields = ['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeat', 'tags', 'rule', 'loungeHistory', 'loungeHistoryIndex', 'blocked', 'friends'];
       let isFullUser = resource.data.keys().hasAll(fullUserFields);
       let k = request.resource.data.diff(resource.data).affectedKeys();
-      let isUpdate = k.hasOnly(['status', 'bio', 'name', 'heartbeat', 'tags', 'rule']);
+      let isUpdate = k.hasOnly(['status', 'bio', 'name', 'heartbeat', 'tags', 'rule', 'blocked', 'friends']);
       return isFullUser && isUpdate;
     }
     match /users/{userId} {
@@ -63,50 +71,44 @@ service cloud.firestore {
       allow update: if request.auth != null && resource.data.meeting != null && changeOnlyMeeting() && meetingConsistentForUnlock();
     }
 
-    match /users/{userId}/private/main {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
+    /////////////////////////
     // bids
     // bidId matches across bidIn and bidOut
     match /users/{userId}/bidOuts/{bidId} { // userId == A
       allow read: if request.auth != null && request.auth.uid == userId;
 
       // addBid rule: request.auth.uid == A
-      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['B', 'speed', 'net', 'addrA', 'active', 'txns', 'budget'].toSet() && publicAndPrivateBidsWillExist(request.resource.data.B, bidId);
-
-      // acceptMeeting rule: request.auth.uid == B
-      allow update: if request.auth != null && request.auth.uid == resource.data.B && fromActiveToInActive() && changeOnlyActive() && existsAfter(/databases/$(database)/documents/meetings/$(bidId));
+      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['B', 'speed', 'net', 'addrA', 'active', 'txns', 'energy', 'comment'].toSet();
 
       // cancelOwnBid rule: request.auth.uid == A
-      allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive() && publicAndPrivateBidsWillBeInActive(resource.data.B, bidId);
+      allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive();
 
       // cancelNoShow rule: request.auth.uid == B
-      allow update: if request.auth != null && request.auth.uid == resource.data.B && fromActiveToInActive() && changeOnlyActive() && publicAndPrivateBidsWillBeInActive(resource.data.B, bidId);
+      allow update: if request.auth != null && request.auth.uid == resource.data.B && fromActiveToInActive() && changeOnlyActive();
     }
     match /users/{userId}/bidInsPublic/{bidId} { // userId == B
       allow read: if request.auth != null;
 
       // addBid rule: request.auth.uid == A
-      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['speed', 'net', 'active', 'ts', 'rule', 'budget'].toSet() && outAndPrivateBidsWillExist(request.auth.uid, userId, bidId);
+      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['speed', 'net', 'active', 'ts', 'rule', 'energy'].toSet();
 
-      // acceptMeeting rule: request.auth.uid == B
-      allow update: if request.auth != null && request.auth.uid != userId && fromActiveToInActive() && changeOnlyActive() && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidInsPrivate/$(bidId)).data.A;
+      // cancelOwnBid rule: request.auth.uid == A
+      allow update: if request.auth != null && fromActiveToInActive() && changeOnlyActive() && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidInsPrivate/$(bidId)).data.A;
 
       // cancelNoShow rule: request.auth.uid == B
-      allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive() && outAndPrivateBidsWillBeInActive(userId, bidId);
+      allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive();
     }
     match /users/{userId}/bidInsPrivate/{bidId} { // userId == B
       allow read: if request.auth != null && request.auth.uid == userId;
 
       // addBid rule: request.auth.uid == A
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.A && request.resource.data.keys().toSet() == ['A', 'addrA', 'comment', 'txns', 'active'].toSet() && outAndPublicBidsWillExist(request.auth.uid, userId, bidId);
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.A && request.resource.data.keys().toSet() == ['A', 'addrA', 'comment', 'txns', 'active'].toSet();
       
-      // acceptMeeting rule: request.auth.uid == B
-      allow update: if request.auth != null && request.auth.uid != userId && request.auth.uid == resource.data.A && fromActiveToInActive() && changeOnlyActive();
+      // cancelOwnBid rule: request.auth.uid == A
+      allow update: if request.auth != null && fromActiveToInActive() && changeOnlyActive() && request.auth.uid == resource.data.A;
 
       // cancelNoShow rule: request.auth.uid == B
-      allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive() && outAndPublicBidsWillBeInActive(resource.data.A, userId, bidId);
+      allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive();
     }
 
     function fromActiveToInActive() {
@@ -115,39 +117,9 @@ service cloud.firestore {
     function changeOnlyActive() {
       return request.resource.data.diff(resource.data).affectedKeys() == ['active'].toSet();
     }
-    function outAndPublicBidsWillBeInActive(A, B, bidId) {
-      let bidInPublic = getAfter(/databases/$(database)/documents/users/$(B)/bidInsPublic/$(bidId));
-      let bidOut = getAfter(/databases/$(database)/documents/users/$(A)/bidOuts/$(bidId));
-      return !bidOut.active && !bidInPublic.active;
-    }
-    function outAndPrivateBidsWillBeInActive(B, bidId) {
-      let bidInPrivate = getAfter(/databases/$(database)/documents/users/$(B)/bidInsPrivate/$(bidId));
-      let A = bidInPrivate.data.A;
-      let bidOut = getAfter(/databases/$(database)/documents/users/$(A)/bidOuts/$(bidId)); // TODO separate into own function for short-circuiting this eval
-      return !bidOut.active && !bidInPrivate.active;
-    }
-    function publicAndPrivateBidsWillBeInActive(B, bidId) {
-      let bidInPublic = getAfter(/databases/$(database)/documents/users/$(B)/bidInsPublic/$(bidId));
-      let bidInPrivate = getAfter(/databases/$(database)/documents/users/$(B)/bidInsPrivate/$(bidId));
-      return !bidInPublic.active && !bidInPrivate.active;
-    }
-    function outAndPublicBidsWillExist(A, B, bidId) {
-      let out = existsAfter(/databases/$(database)/documents/users/$(A)/bidOuts/$(bidId));
-      let public = existsAfter(/databases/$(database)/documents/users/$(B)/bidInsPublic/$(bidId));
-      return out && public;
-    }
-    function outAndPrivateBidsWillExist(A, B, bidId) {
-      let out = existsAfter(/databases/$(database)/documents/users/$(A)/bidOuts/$(bidId));
-      let private = existsAfter(/databases/$(database)/documents/users/$(B)/bidInsPrivate/$(bidId));
-      return out && private;
-    }
-    function publicAndPrivateBidsWillExist(B, bidId) {
-      let public = existsAfter(/databases/$(database)/documents/users/$(B)/bidInsPublic/$(bidId));
-      let private = existsAfter(/databases/$(database)/documents/users/$(B)/bidInsPrivate/$(bidId));
-      return public && private;
-    }
 
-    // meeting
+    /////////////////////////
+    // meetings
     match /meetings/{meetingId} {
       allow read: if request.auth != null && isAOrB(resource.data);
     }
@@ -215,6 +187,7 @@ service cloud.firestore {
       allow create: if request.auth != null && hasCorrectFieldsForCreate() && hasCorrectValuesForCreate() && bidsExistForCreate(meetingId);
     }
 
+    /////////////////////////
     // ratings
     // a user could spam and create multiple ratings for the same meeting
     // they could have easily created the same correct one from the beginning
@@ -224,7 +197,8 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.keys().toSet() == ['rating', 'comment'].toSet() && isAOrB(get(/databases/$(database)/documents/meetings/$(meetingId)).data);
     }
 
-    // top
+    /////////////////////////
+    // tops
     match /topSpeeds/{id} {
       allow read: if request.auth != null;
     }
