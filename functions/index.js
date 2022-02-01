@@ -250,7 +250,7 @@ const settleMeeting = async (docRef, meeting) => {
   if (result) {
     updateObj["txns.unlock"] = result.txId;
     updateObj["energy.A"] = result.energyA;
-    updateObj["energy.Creator"] = result.energyCreator;
+    updateObj["energy.CREATOR"] = result.energyCreator;
     updateObj["energy.B"] = result.energyB;
   }
   await docRef.update(updateObj); // not in parallel in case of early bugs
@@ -538,6 +538,7 @@ const addTopMeeting = async (T, colRef, meeting) => {
   return T;
 };
 const updateTopMeetings = async (collection, field, meeting) => {
+  console.log("updateTopMeetings, collection, field", collection, field);
   if (meeting.duration === 0) return;
   if (meeting.speed.num === 0) return;
   const colRef = db.collection(collection);
