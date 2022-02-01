@@ -188,15 +188,18 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
         loungeHistory[loungeHistoryIndex] = lounge;
       }
 
-      return T.update(change.after.ref, {
+      T.update(docRefB, {
+        loungeHistory: loungeHistory,
+        loungeHistoryIndex: loungeHistoryIndex,
+      });
+
+      T.update(change.after.ref, {
         start: admin.firestore.FieldValue.serverTimestamp(),
         status: "CALL_STARTED",
         statusHistory: admin.firestore.FieldValue.arrayUnion({
           value: "CALL_STARTED",
           ts: admin.firestore.Timestamp.now(),
         }),
-        loungeHistory: loungeHistory,
-        loungeHistoryIndex: loungeHistoryIndex,
       });
     });
   }
@@ -218,7 +221,8 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
     console.log("meetingUpdated, users unlocked");
   }
 
-  newMeeting.duration = newMeeting.start ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
+  newMeeting.duration = newMeeting.start !== null ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
+  console.log("meetingUpdated, newMeeting.duration", newMeeting.start, newMeeting.end.seconds, newMeeting.start.seconds, newMeeting.duration);
 
   return settleMeeting(change.after.ref, newMeeting);
 });
@@ -278,7 +282,7 @@ const settleALGOMeeting = async (
 
   const maxEnergy = paymentTxn.amount - 4 * MIN_TXN_FEE;
   console.log("maxEnergy", maxEnergy);
-  if (maxEnergy !== meeting.budget) console.error("maxEnergy !== meeting.budget", maxEnergy, meeting.budget);
+  if (maxEnergy !== meeting.energy.MAX) console.error("maxEnergy !== meeting.energy.MAX", maxEnergy, meeting.energy.MAX);
 
   let energy = maxEnergy;
   if (meeting.status !== "END_TIMER") energy = Math.min(meeting.duration * meeting.speed.num, energy);
@@ -303,6 +307,7 @@ const settleALGOMeeting = async (
 
 const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB) => {
   const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  console.log("accountCreator.addr", accountCreator.addr);
   const appArg0 = new TextEncoder().encode("UNLOCK");
   const appArg1 = algosdk.encodeUint64(energyA);
   const appArg2 = algosdk.encodeUint64(energyFee);
