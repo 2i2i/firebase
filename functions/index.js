@@ -227,7 +227,7 @@ const settleMeeting = async (docRef, meeting) => {
   let result = null;
   if (meeting.speed.num !== 0) {
     if (meeting.speed.assetId === 0) {
-      const result = await settleALGOMeeting(clientTESTNET, docRef.id, meeting);
+      result = await settleALGOMeeting(clientTESTNET, docRef.id, meeting);
     } else {
       // txId = await settleASAMeeting(clientTESTNET, meeting);
       throw Error("no ASA at the moment");
@@ -245,7 +245,7 @@ const settleMeeting = async (docRef, meeting) => {
     updateObj["txns.unlock"] = result.txId;
     updateObj["energy.A"] = result.energyA;
     updateObj["energy.Creator"] = result.energyCreator;
-    updateObj["energy.B"] = result.energyB ;
+    updateObj["energy.B"] = result.energyB;
   }
   await docRef.update(updateObj); // not in parallel in case of early bugs
 
@@ -276,8 +276,8 @@ const settleALGOMeeting = async (
 
   const maxEnergy = paymentTxn.amount - 4 * MIN_TXN_FEE;
   console.log("maxEnergy", maxEnergy);
-  if (maxEnergy !== meeting.budget) console.error('maxEnergy !== meeting.budget', maxEnergy, meeting.budget);
-  
+  if (maxEnergy !== meeting.budget) console.error("maxEnergy !== meeting.budget", maxEnergy, meeting.budget);
+
   let energy = maxEnergy;
   if (meeting.status !== "END_TIMER") energy = Math.min(meeting.duration * meeting.speed.num, energy);
   console.log("energy", energy);
@@ -294,9 +294,9 @@ const settleALGOMeeting = async (
   return {
     txId: txId,
     energyA: energyA,
-    energyCreator: energyCreator, 
+    energyCreator: energyCreator,
     energyB: energyB,
-  }
+  };
 };
 
 const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB) => {
