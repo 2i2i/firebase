@@ -67,7 +67,7 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
       importance: {
         lurker: 0,
         chrony: 1,
-        highroller: 5,
+        highroller: 4,
         eccentric: 0,
       },
     },
