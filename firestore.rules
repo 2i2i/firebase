@@ -4,6 +4,8 @@
 // acceptMeeting - A
 // createRoom - A
 
+// firebase deploy --only firestore:rules
+
 // https://firebase.google.com/docs/firestore/security/rules-structure?authuser=0#granular_operations
 // https://firebase.google.com/docs/reference/rules/rules.MapDiff
 // get, list; create, update, delete
@@ -164,7 +166,7 @@ service cloud.firestore {
 
     // create meeting
     function hasCorrectFieldsForCreate() {
-      return request.resource.data.keys().toSet() == ['active', 'settled', 'A', 'B', 'addrA', 'addrB', 'energy', 'start', 'end', 'duration', 'txns', 'status', 'statusHistory', 'net', 'speed', 'room', 'coinFlowsA', 'coinFlowsB', 'lounge'].toSet();
+      return request.resource.data.keys().toSet() == ['active', 'settled', 'A', 'B', 'addrA', 'addrB', 'energy', 'start', 'end', 'duration', 'txns', 'status', 'statusHistory', 'net', 'speed', 'room', 'coinFlowsA', 'coinFlowsB', 'lounge', 'rule'].toSet();
     }
     function hasCorrectValuesForCreate() {
       return request.auth.uid == request.resource.data.B &&

@@ -7,7 +7,6 @@
 // firebase use
 // firebase functions:shell
 // firebase deploy --only functions:ratingAdded
-// firebase deploy --only firestore:rules
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
