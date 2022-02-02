@@ -47,7 +47,7 @@ const LOUNGE_DICT = {
 };
 const MAX_LOUNGE_HISTORY = 10;
 
-const runWithObj = {minInstances: 0, memory: "128MB"};
+const runWithObj = {minInstances: 1, memory: "128MB"};
 
 exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
   const docRefUser = db.collection("users").doc(user.uid);
