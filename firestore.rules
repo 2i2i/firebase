@@ -25,6 +25,13 @@ service cloud.firestore {
     }
 
     /////////////////////////
+    // tokens
+    match /tokens/{uid} {
+      // any logged in user can read
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    /////////////////////////
     // users
     function meetingConsistentForLock(userId) {
       let meeting = getAfter(/databases/$(database)/documents/meetings/$(request.resource.data.meeting));

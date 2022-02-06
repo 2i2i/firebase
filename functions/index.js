@@ -17,6 +17,7 @@ const algosdk = require("algosdk");
 const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
+const messaging = admin.messaging();
 
 // const clientMAINNET = algosdk.Algodv2(
 //     "",
@@ -125,6 +126,35 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     });
   });
 });
+
+exports.bidAdded = functions.runWith(runWithObj).firestore
+    .document("users/{userId}/bidInsPublic/{bidId}")
+    .onCreate(async (change, context) => {
+
+      const userId = context.params.userId;
+      const docRefToken = db.collection("tokens").doc(userId);
+      const docToken = await docRefToken.get();
+      if (!docToken.exists) return; // no token
+
+      const token = docToken.get("token");
+
+      const message = {
+        notification:{
+          title:"2i2i",
+          body:"Someone wants to meet you"
+        },
+        token: token,
+      };
+
+      return messaging.send(message)
+      .then((response) => {
+        // Response is a message ID string.
+        console.log('Successfully sent message:', response);
+      })
+      .catch((error) => {
+        console.log('Error sending message:', error);
+      });
+    });
 
 exports.ratingAdded = functions.runWith(runWithObj).firestore
     .document("users/{userId}/ratings/{ratingId}")
@@ -726,9 +756,27 @@ const updateTopMeetings = async (collection, field, meeting) => {
 
 // test({meetingId: '9IHLdjOw9eHB0QEkpgYB'})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   const meetingDoc = await db.collection("meetings").doc("1gk92xnKkrsC3XD532bn").get();
-//   const meeting = meetingDoc.data();
-//   // console.log(meeting);
-//   // const meeting = {B: "03QNKgunbnSYSuZPyAHaVHGbTTz1", end: admin.firestore.Timestamp(), bid: "TqY95mhcNCEEVW9q0eIQ", duration: 13, speed: {num: 1, assetId: 0}, addrA: "V7MRVBP4VI6KJAL2URUZBN3TY5MZIJ7HMJINSFICSFSRQCSVNIJW5LMPNQ", addrB: "2I2IXTP67KSNJ5FQXHUJP5WZBX2JTFYEBVTBYFF3UUJ3SQKXSZ3QHZNNPY"};
-//   return updateTopSpeeds(meeting);
+//   // const userId = context.params.userId;
+//       // const docRefToken = db.collection("tokens").doc(userId);
+//       // const docToken = await docRefToken.get();
+//       // if (!docToken.exists) return; // no token
+
+//       const token = "e1gBJ3Jp334PCgO1fZKTyT:APA91bEoSRoMqbogGOjt9gtuRaMkKUVJqW5c_hJOB9taZdsHb9cHEKOIPErMq3leJ4sBvW-MoiLOR3UG_zwREDYw2b39xJHDVe5HDTdT-MA59AKwqhNfkYAreVIaPHgBvcyVQaGkkBVT";//docToken.get("token");
+
+//       const message = {
+//         data: {
+//           score: '850',
+//           time: '2:45'
+//         },
+//         token: token,
+//       };
+
+//       return messaging.send(message)
+//       .then((response) => {
+//         // Response is a message ID string.
+//         console.log('Successfully sent message:', response);
+//       })
+//       .catch((error) => {
+//         console.log('Error sending message:', error);
+//       });
 // });
