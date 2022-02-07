@@ -156,32 +156,32 @@ exports.bidAdded = functions.runWith(runWithObj).firestore
     });
 
 // updateDevices({});
-exports.updateDevices = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+// exports.updateDevices = functions.runWith(runWithObj).https.onCall(async (data, context) => {
 
-  const colRef = db.collection("tokens");
-  const col = await colRef.get();
-  const tokens = col.docs.map(doc => doc.get("token"));
+//   const colRef = db.collection("tokens");
+//   const col = await colRef.get();
+//   const tokens = col.docs.map(doc => doc.get("token"));
 
-  const message = {
-    notification: {
-      title: "2i2i",
-      body: "Update available - Please reload",
-    },
-    data: {
-      action: "update",
-    },
-    tokens: tokens,
-  };
+//   const message = {
+//     notification: {
+//       title: "2i2i",
+//       body: "Update available - Please reload",
+//     },
+//     data: {
+//       action: "update",
+//     },
+//     tokens: tokens,
+//   };
 
-  return messaging.sendMulticast(message)
-      .then((response) => {
-        // Response is a message ID string.
-        console.log("Successfully sent message:", response);
-      })
-      .catch((error) => {
-        console.log("Error sending message:", error);
-      });
-});
+//   return messaging.sendMulticast(message)
+//       .then((response) => {
+//         // Response is a message ID string.
+//         console.log("Successfully sent message:", response);
+//       })
+//       .catch((error) => {
+//         console.log("Error sending message:", error);
+//       });
+// });
 
 exports.ratingAdded = functions.runWith(runWithObj).firestore
     .document("users/{userId}/ratings/{ratingId}")
