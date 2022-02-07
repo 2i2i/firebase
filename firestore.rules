@@ -13,9 +13,15 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    /////////////////////////
     // all
     match /{document=**} {
       allow read, write: if false;
+    }
+    // test
+    match /test/{document=**} {
+      // any logged in user can read
+      allow read, write: if true;
     }
 
     /////////////////////////

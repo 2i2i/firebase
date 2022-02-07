@@ -130,7 +130,6 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
 exports.bidAdded = functions.runWith(runWithObj).firestore
     .document("users/{userId}/bidInsPublic/{bidId}")
     .onCreate(async (change, context) => {
-
       const userId = context.params.userId;
       const docRefToken = db.collection("tokens").doc(userId);
       const docToken = await docRefToken.get();
@@ -139,22 +138,50 @@ exports.bidAdded = functions.runWith(runWithObj).firestore
       const token = docToken.get("token");
 
       const message = {
-        notification:{
-          title:"2i2i",
-          body:"Someone wants to meet you"
+        notification: {
+          title: "2i2i",
+          body: "Someone wants to meet you",
         },
         token: token,
       };
 
       return messaging.send(message)
+          .then((response) => {
+            // Response is a message ID string.
+            console.log("Successfully sent message:", response);
+          })
+          .catch((error) => {
+            console.log("Error sending message:", error);
+          });
+    });
+
+// updateDevices({});
+exports.updateDevices = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+
+  const colRef = db.collection("tokens");
+  const col = await colRef.get();
+  const tokens = col.docs.map(doc => doc.get("token"));
+
+  const message = {
+    notification: {
+      title: "2i2i",
+      body: "Update available - Please reload",
+    },
+    data: {
+      action: "update",
+    },
+    tokens: tokens,
+  };
+
+  return messaging.sendMulticast(message)
       .then((response) => {
         // Response is a message ID string.
-        console.log('Successfully sent message:', response);
+        console.log("Successfully sent message:", response);
       })
       .catch((error) => {
-        console.log('Error sending message:', error);
+        console.log("Error sending message:", error);
       });
-    });
+});
 
 exports.ratingAdded = functions.runWith(runWithObj).firestore
     .document("users/{userId}/ratings/{ratingId}")
