@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:ratingAdded
+// firebase deploy --only functions:meetingCreated
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -249,23 +249,8 @@ const notifyA = async (A) => {
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onCreate(async (change, context) => {
-      const id = change.id;
       const meeting = change.data();
-      const A = meeting.A;
-      const B = meeting.B;
-      const obj = {active: false};
-      const bidOutRef = db.collection("users").doc(A).collection("bidOuts").doc(id);
-      const bidInPublicRef = db.collection("users").doc(B).collection("bidInsPublic").doc(id);
-      const bidInPrivateRef = db.collection("users").doc(B).collection("bidInsPrivate").doc(id);
-      const p1 = db.runTransaction(async (T) => {
-        T.update(bidOutRef, obj);
-        T.update(bidInPublicRef, obj);
-        T.update(bidInPrivateRef, obj);
-      });
-
-      const p2 = notifyA(A);
-
-      return Promise.all([p1, p2]);
+      return notifyA(meeting.A);
     });
 exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meetings/{meetingId}").onUpdate(async (change, context) => {
   const oldMeeting = change.before.data();
