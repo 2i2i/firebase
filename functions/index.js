@@ -127,6 +127,8 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
   });
 });
 
+// https://imgur.com/Jwih3Ac
+// https://imgur.com/QEzobjq
 exports.bidAdded = functions.runWith(runWithObj).firestore
     .document("users/{userId}/bidInsPublic/{bidId}")
     .onCreate(async (change, context) => {
@@ -141,6 +143,15 @@ exports.bidAdded = functions.runWith(runWithObj).firestore
         notification: {
           title: "2i2i",
           body: "Someone wants to meet you",
+          image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
+        },
+        webpush: {
+          headers: {
+            Urgency: "high",
+          },
+          fcm_options: {
+            link: "https://test.2i2i.app/myHangout",
+          },
         },
         token: token,
       };
@@ -171,7 +182,7 @@ exports.bidAdded = functions.runWith(runWithObj).firestore
 //       action: "update",
 //     },
 //     tokens: tokens,
-//   };
+//   };`
 
 //   return messaging.sendMulticast(message)
 //       .then((response) => {
@@ -202,6 +213,39 @@ exports.ratingAdded = functions.runWith(runWithObj).firestore
       });
     });
 
+const notifyA = async (A) => {
+  const docRefToken = db.collection("tokens").doc(A);
+  const docToken = await docRefToken.get();
+  if (!docToken.exists) return; // no token
+
+  const token = docToken.get("token");
+
+  const message = {
+    notification: {
+      title: "2i2i",
+      body: "The Host is calling you",
+      image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
+    },
+    webpush: {
+      headers: {
+        Urgency: "high",
+      },
+      fcm_options: {
+        link: "https://test.2i2i.app",
+      },
+    },
+    token: token,
+  };
+
+  return messaging.send(message)
+      .then((response) => {
+        // Response is a message ID string.
+        console.log("Successfully sent message:", response);
+      })
+      .catch((error) => {
+        console.log("Error sending message:", error);
+      });
+};
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onCreate(async (change, context) => {
@@ -213,11 +257,15 @@ exports.meetingCreated = functions.runWith(runWithObj).firestore
       const bidOutRef = db.collection("users").doc(A).collection("bidOuts").doc(id);
       const bidInPublicRef = db.collection("users").doc(B).collection("bidInsPublic").doc(id);
       const bidInPrivateRef = db.collection("users").doc(B).collection("bidInsPrivate").doc(id);
-      return db.runTransaction(async (T) => {
+      const p1 = db.runTransaction(async (T) => {
         T.update(bidOutRef, obj);
         T.update(bidInPublicRef, obj);
         T.update(bidInPrivateRef, obj);
       });
+
+      const p2 = notifyA(A);
+
+      return Promise.all([p1, p2]);
     });
 exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meetings/{meetingId}").onUpdate(async (change, context) => {
   const oldMeeting = change.before.data();
@@ -783,27 +831,6 @@ const updateTopMeetings = async (collection, field, meeting) => {
 
 // test({meetingId: '9IHLdjOw9eHB0QEkpgYB'})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   // const userId = context.params.userId;
-//       // const docRefToken = db.collection("tokens").doc(userId);
-//       // const docToken = await docRefToken.get();
-//       // if (!docToken.exists) return; // no token
-
-//       const token = "e1gBJ3Jp334PCgO1fZKTyT:APA91bEoSRoMqbogGOjt9gtuRaMkKUVJqW5c_hJOB9taZdsHb9cHEKOIPErMq3leJ4sBvW-MoiLOR3UG_zwREDYw2b39xJHDVe5HDTdT-MA59AKwqhNfkYAreVIaPHgBvcyVQaGkkBVT";//docToken.get("token");
-
-//       const message = {
-//         data: {
-//           score: '850',
-//           time: '2:45'
-//         },
-//         token: token,
-//       };
-
-//       return messaging.send(message)
-//       .then((response) => {
-//         // Response is a message ID string.
-//         console.log('Successfully sent message:', response);
-//       })
-//       .catch((error) => {
-//         console.log('Error sending message:', error);
-//       });
+//   const m = await db.collection("meetings").get();
+//   console.log(m.size);
 // });

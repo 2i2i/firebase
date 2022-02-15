@@ -33,7 +33,9 @@ service cloud.firestore {
     /////////////////////////
     // tokens
     match /tokens/{uid} {
-      // any logged in user can read
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /devices/{uid} {
       allow write: if request.auth != null && request.auth.uid == uid;
     }
 
@@ -84,6 +86,12 @@ service cloud.firestore {
       allow update: if request.auth != null && resource.data.meeting == null && changeOnlyMeeting() && meetingConsistentForLock(userId);
       // rule for unlocking user
       allow update: if request.auth != null && resource.data.meeting != null && changeOnlyMeeting() && meetingConsistentForUnlock();
+    }
+
+    /////////////////////////
+    // chat
+    match /users/{userId}/chat/{chatId} {
+      allow read, write: if request.auth != null;
     }
 
     /////////////////////////
