@@ -250,7 +250,30 @@ exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onCreate(async (change, context) => {
       const meeting = change.data();
-      return notifyA(meeting.A);
+
+      // lounge history
+      const p1 = db.runTransaction(async (T) => {
+        const docRefB = db.collection("users").doc(meeting.B);
+        const docB = await T.get(docRefB);
+        const loungeHistory = docB.get("loungeHistory");
+        const loungeHistoryIndexDB = docB.get("loungeHistoryIndex");
+        const lounge = LOUNGE_DICT[meeting.lounge];
+        const loungeHistoryIndex = (loungeHistoryIndexDB + 1) % MAX_LOUNGE_HISTORY;
+        if (loungeHistory.length < MAX_LOUNGE_HISTORY) {
+          loungeHistory.push(lounge);
+        } else {
+          loungeHistory[loungeHistoryIndex] = lounge;
+        }
+        T.update(docRefB, {
+          loungeHistory: loungeHistory,
+          loungeHistoryIndex: loungeHistoryIndex,
+        });
+        console.log("meetingUpdated, new loungeHistory");
+      });
+
+      const p2 = notifyA(meeting.A);
+
+      return Promise.all([p1, p2]);
     });
 exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meetings/{meetingId}").onUpdate(async (change, context) => {
   const oldMeeting = change.before.data();
@@ -262,41 +285,20 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
 
   if ((newMeeting.status === "RECEIVED_REMOTE_A" && oldMeeting.status == "RECEIVED_REMOTE_B") ||
            newMeeting.status === "RECEIVED_REMOTE_B" && oldMeeting.status == "RECEIVED_REMOTE_A") {
-    return db.runTransaction(async (T) => {
-      const docRefB = db.collection("users").doc(newMeeting.B);
-      const docB = await T.get(docRefB);
+    // start: earlier of RECEIVED_REMOTE_A/B
+    let start = admin.firestore.FieldValue.serverTimestamp();
+    for (const s of newMeeting.statusHistory) {
+      if (s.value === "RECEIVED_REMOTE_A" || s.value === "RECEIVED_REMOTE_B") start = s.ts;
+    }
+    console.log("meetingUpdated, start", start);
 
-      // lounge history
-      const loungeHistory = docB.get("loungeHistory");
-      const loungeHistoryIndexDB = docB.get("loungeHistoryIndex");
-      const lounge = LOUNGE_DICT[newMeeting.lounge];
-      const loungeHistoryIndex = (loungeHistoryIndexDB + 1) % MAX_LOUNGE_HISTORY;
-      if (loungeHistory.length < MAX_LOUNGE_HISTORY) {
-        loungeHistory.push(lounge);
-      } else {
-        loungeHistory[loungeHistoryIndex] = lounge;
-      }
-      T.update(docRefB, {
-        loungeHistory: loungeHistory,
-        loungeHistoryIndex: loungeHistoryIndex,
-      });
-      console.log("meetingUpdated, new loungeHistory");
-
-      // start: earlier of RECEIVED_REMOTE_A/B
-      let start = admin.firestore.FieldValue.serverTimestamp();
-      for (const s of newMeeting.statusHistory) {
-        if (s.value === "RECEIVED_REMOTE_A" || s.value === "RECEIVED_REMOTE_B") start = s.ts;
-      }
-      console.log("meetingUpdated, start", start);
-
-      T.update(change.after.ref, {
-        start: start,
-        status: "CALL_STARTED",
-        statusHistory: admin.firestore.FieldValue.arrayUnion({
-          value: "CALL_STARTED",
-          ts: start,
-        }),
-      });
+    return change.after.ref.update({
+      start: start,
+      status: "CALL_STARTED",
+      statusHistory: admin.firestore.FieldValue.arrayUnion({
+        value: "CALL_STARTED",
+        ts: start,
+      }),
     });
   }
 
