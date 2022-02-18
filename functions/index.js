@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:meetingCreated
+// firebase deploy --only functions:meetingUpdated
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -320,7 +320,7 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
   }
 
   newMeeting.duration = newMeeting.start !== null ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
-  console.log("meetingUpdated, newMeeting.duration", newMeeting.start, newMeeting.end.seconds, newMeeting.start.seconds, newMeeting.duration);
+  // console.log("meetingUpdated, newMeeting.duration", newMeeting.start, newMeeting.end.seconds, newMeeting.start.seconds, newMeeting.duration);
 
   return settleMeeting(change.after.ref, newMeeting);
 });
@@ -443,12 +443,8 @@ const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB)
 };
 
 // every minute
-exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
-  console.log("context", context);
-  const T = new Date();
-  T.setSeconds(T.getSeconds() - 10);
-  const usersColRef = db.collection("users");
-  const queryRef = usersColRef.where("status", "==", "ONLINE").where("heartbeat", "<", T);
+const checkUserStatusInternal = async (T, usersColRef, status) => {
+  const queryRef = usersColRef.where("status", "==", status).where("heartbeat", "<", T);
   const querySnapshot = await queryRef.get();
   console.log("querySnapshot.size", querySnapshot.size);
   const promises = [];
@@ -470,7 +466,16 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
       promises.push(meetingPromise);
     }
   });
-  await Promise.all(promises);
+  return promises;
+};
+exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun((context) => {
+  console.log("context", context);
+  const T = new Date();
+  T.setSeconds(T.getSeconds() - 10);
+  const usersColRef = db.collection("users");
+  const p1 = checkUserStatusInternal(T, usersColRef, "ONLINE");
+  const p2 = checkUserStatusInternal(T, usersColRef, "IDLE");
+  return Promise.all([...p1, ...p2]);
 });
 
 // const sendALGO = async (client, fromAccount, toAccount, amount) => {
