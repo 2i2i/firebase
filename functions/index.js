@@ -17,7 +17,7 @@ const algosdk = require("algosdk");
 const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
-const messaging = admin.messaging();
+// const messaging = admin.messaging();
 
 // const clientMAINNET = algosdk.Algodv2(
 //     "",
@@ -137,33 +137,34 @@ exports.bidAdded = functions.runWith(runWithObj).firestore
       const docToken = await docRefToken.get();
       if (!docToken.exists) return; // no token
 
-      const token = docToken.get("token");
+      // const token = docToken.get("token");
 
-      const message = {
-        notification: {
-          title: "2i2i",
-          body: "Someone wants to meet you",
-          image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
-        },
-        webpush: {
-          headers: {
-            Urgency: "high",
-          },
-          fcm_options: {
-            link: "https://test.2i2i.app/myHangout",
-          },
-        },
-        token: token,
-      };
+      // const message = {
+      //   notification: {
+      //     title: "2i2i",
+      //     body: "Someone wants to meet you",
+      //     image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
+      //   },
+      //   webpush: {
+      //     headers: {
+      //       Urgency: "high",
+      //     },
+      //     fcm_options: {
+      //       link: "https://test.2i2i.app/myHangout",
+      //     },
+      //   },
+      //   token: token,
+      // };
 
-      return messaging.send(message)
-          .then((response) => {
-            // Response is a message ID string.
-            console.log("Successfully sent message:", response);
-          })
-          .catch((error) => {
-            console.log("Error sending message:", error);
-          });
+      // DEBUG
+      // return messaging.send(message)
+      //     .then((response) => {
+      //       // Response is a message ID string.
+      //       console.log("Successfully sent message:", response);
+      //     })
+      //     .catch((error) => {
+      //       console.log("Error sending message:", error);
+      //     });
     });
 
 // updateDevices({});
@@ -218,33 +219,34 @@ const notifyA = async (A) => {
   const docToken = await docRefToken.get();
   if (!docToken.exists) return; // no token
 
-  const token = docToken.get("token");
+  // const token = docToken.get("token");
 
-  const message = {
-    notification: {
-      title: "2i2i",
-      body: "The Host is calling you",
-      image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
-    },
-    webpush: {
-      headers: {
-        Urgency: "high",
-      },
-      fcm_options: {
-        link: "https://test.2i2i.app",
-      },
-    },
-    token: token,
-  };
+  // const message = {
+  //   notification: {
+  //     title: "2i2i",
+  //     body: "The Host is calling you",
+  //     image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
+  //   },
+  //   webpush: {
+  //     headers: {
+  //       Urgency: "high",
+  //     },
+  //     fcm_options: {
+  //       link: "https://test.2i2i.app",
+  //     },
+  //   },
+  //   token: token,
+  // };
 
-  return messaging.send(message)
-      .then((response) => {
-        // Response is a message ID string.
-        console.log("Successfully sent message:", response);
-      })
-      .catch((error) => {
-        console.log("Error sending message:", error);
-      });
+  // DEBUG
+  // return messaging.send(message)
+  //     .then((response) => {
+  //       // Response is a message ID string.
+  //       console.log("Successfully sent message:", response);
+  //     })
+  //     .catch((error) => {
+  //       console.log("Error sending message:", error);
+  //     });
 };
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
@@ -683,6 +685,62 @@ const updateTopMeetings = async (collection, field, meeting) => {
     }
   });
 };
+
+
+////////////////
+// ADMIN
+// const checkActiveBidsWithMeetingHelper = async(A, B, id) => {
+//   // const bidOutDocSnapshot = await db.collection("users").doc(A).collection("bidOuts").doc(id).get();
+//   // if (bidOutDocSnapshot.get("active")) {
+//   //   console.log("bidOutDocSnapshot" + id);
+//   //   // await bidOutDocSnapshot.ref.update({active: false});
+//   // }
+//   return db.collection("users").doc(A).collection("bidOuts").doc(id).get().then((bidOutDocSnapshot) => {
+//     if (bidOutDocSnapshot.get("active")) {
+//       console.log("bidOutDocSnapshot " + id);
+//       // await bidInPrivateDocSnapshot.ref.update({active: false});
+//     }  
+//   });
+//   // const bidInPrivateDocSnapshot = await db.collection("users").doc(B).collection("bidInsPrivate").doc(id).get();
+//   // if (bidInPrivateDocSnapshot.get("active")) {
+//   //   console.log("bidInPrivateDocSnapshot" + id);
+//   //   // await bidInPrivateDocSnapshot.ref.update({active: false});
+//   // }
+//   // return db.collection("users").doc(B).collection("bidInsPrivate").doc(id).get().then((bidInPrivateDocSnapshot) => {
+//   //   if (bidInPrivateDocSnapshot.get("active")) {
+//   //     console.log("bidInPrivateDocSnapshot " + id);
+//   //     // await bidInPrivateDocSnapshot.ref.update({active: false});
+//   //   }  
+//   // });
+//   // const bidInPublicDocSnapshot = await db.collection("users").doc(B).collection("bidInsPublic").doc(id).get();
+//   // return db.collection("users").doc(B).collection("bidInsPublic").doc(id).get().then((bidInPublicDocSnapshot) => {
+//   //   if (bidInPublicDocSnapshot.get("active")) {
+//   //     console.log("bidInPublicDocSnapshot " + id);
+//   //     // await bidInPublicDocSnapshot.ref.update({active: false});
+//   //   }  
+//   // });
+//   // if (bidInPublicDocSnapshot.get("active")) {
+//   //   console.log("bidInPublicDocSnapshot" + id);
+//   //   // await bidInPublicDocSnapshot.ref.update({active: false});
+//   // }
+// };
+// exports.checkActiveBidsWithMeeting = functions.https.onCall(async (data, context) => {
+//   const meetingsQuerySnapshot = await db.collection("meetings").get();
+//   const ps = [];
+//   for (const meetingQueryDocSnapshot of meetingsQuerySnapshot.docs) {
+//     const id = meetingQueryDocSnapshot.id;
+//     const A = meetingQueryDocSnapshot.get("A");
+//     const B = meetingQueryDocSnapshot.get("B");
+//     const p = checkActiveBidsWithMeetingHelper(A, B, id);
+//     ps.push(p);
+//   }
+//   await Promise.all(ps);
+//   console.log("done");
+// });
+
+
+////////////////
+// OLD
 
 // const optIn = async (client, account, assetIndex) =>
 //   sendASA(client, account, account, 0, assetIndex);
