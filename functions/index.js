@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:meetingUpdated
+// firebase deploy --only functions:giftALGO
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -480,31 +480,31 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   return Promise.all([...p1, ...p2]);
 });
 
-// const sendALGO = async (client, fromAccount, toAccount, amount) => {
-//   // txn
-//   const suggestedParams = await client.getTransactionParams().do();
-//   // const note = new Uint8Array(Buffer.from('', 'utf8'));
-//   const transactionOptions = {
-//     from: fromAccount.addr,
-//     to: toAccount.addr,
-//     amount,
-//     // note,
-//     suggestedParams,
-//   };
-//   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
-//       transactionOptions,
-//   );
+const sendALGO = async (client, fromAccount, toAccount, amount) => {
+  // txn
+  const suggestedParams = await client.getTransactionParams().do();
+  const note = new Uint8Array(Buffer.from("a gift from 2i2i", "utf8"));
+  const transactionOptions = {
+    from: fromAccount.addr,
+    to: toAccount.addr,
+    amount,
+    note,
+    suggestedParams,
+  };
+  const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
+      transactionOptions,
+  );
 
-//   // sign
-//   const signedTxn = txn.signTxn(fromAccount.sk);
+  // sign
+  const signedTxn = txn.signTxn(fromAccount.sk);
 
-//   // send raw
-//   const {txId} = await client.sendRawTransaction(signedTxn).do();
-//   console.log("txId");
-//   console.log(txId);
+  // send raw
+  const {txId} = await client.sendRawTransaction(signedTxn).do();
+  console.log("txId");
+  console.log(txId);
 
-//   return txId;
-// };
+  return txId;
+};
 
 // exports.updateFX = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
 //   const colRef = db.collection("FX");
@@ -548,26 +548,29 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
 
 // const NOVALUE_ASSET_ID = 29147319;
 
-// exports.giftALGO = functions.runWith(runWithObj).https.onCall(async (data, context) => {
-//   if (context.app == undefined) {
-//     throw new functions.https.HttpsError(
-//         "failed-precondition",
-//         "The function must be called from an App Check verified app.");
-//   }
-//   const uid = context.auth.uid;
-//   if (!uid) return;
+// giftALGO({account: "2I2IXTP67KSNJ5FQXHUJP5WZBX2JTFYEBVTBYFF3UUJ3SQKXSZ3QHZNNPY"}, {auth: {uid: "uid"}})
+exports.giftALGO = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  // console.log("context", context);
+  // console.log("data", data);
+  // if (context.app == undefined) {
+  //   throw new functions.https.HttpsError(
+  //       "failed-precondition",
+  //       "The function must be called from an App Check verified app.");
+  // }
+  // const uid = context.auth.uid;
+  // if (!uid) return;
 
-//   const creatorAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
-//   console.log("creatorAccount.addr", creatorAccount.addr);
+  const creatorAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  console.log("creatorAccount.addr", creatorAccount.addr);
 
-//   const userAccount = {addr: data.account};
-//   console.log("data.account", data.account);
+  const userAccount = {addr: data.account};
+  console.log("data.account", data.account);
 
-//   return sendALGO(clientTESTNET,
-//       creatorAccount,
-//       userAccount,
-//       1000000);
-// });
+  return sendALGO(clientTESTNET,
+      creatorAccount,
+      userAccount,
+      500000);
+});
 
 // exports.giftASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
 //   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
@@ -687,7 +690,7 @@ const updateTopMeetings = async (collection, field, meeting) => {
 };
 
 
-////////////////
+// //////////////
 // ADMIN
 // const checkActiveBidsWithMeetingHelper = async(A, B, id) => {
 //   // const bidOutDocSnapshot = await db.collection("users").doc(A).collection("bidOuts").doc(id).get();
@@ -699,7 +702,7 @@ const updateTopMeetings = async (collection, field, meeting) => {
 //     if (bidOutDocSnapshot.get("active")) {
 //       console.log("bidOutDocSnapshot " + id);
 //       // await bidInPrivateDocSnapshot.ref.update({active: false});
-//     }  
+//     }
 //   });
 //   // const bidInPrivateDocSnapshot = await db.collection("users").doc(B).collection("bidInsPrivate").doc(id).get();
 //   // if (bidInPrivateDocSnapshot.get("active")) {
@@ -710,14 +713,14 @@ const updateTopMeetings = async (collection, field, meeting) => {
 //   //   if (bidInPrivateDocSnapshot.get("active")) {
 //   //     console.log("bidInPrivateDocSnapshot " + id);
 //   //     // await bidInPrivateDocSnapshot.ref.update({active: false});
-//   //   }  
+//   //   }
 //   // });
 //   // const bidInPublicDocSnapshot = await db.collection("users").doc(B).collection("bidInsPublic").doc(id).get();
 //   // return db.collection("users").doc(B).collection("bidInsPublic").doc(id).get().then((bidInPublicDocSnapshot) => {
 //   //   if (bidInPublicDocSnapshot.get("active")) {
 //   //     console.log("bidInPublicDocSnapshot " + id);
 //   //     // await bidInPublicDocSnapshot.ref.update({active: false});
-//   //   }  
+//   //   }
 //   // });
 //   // if (bidInPublicDocSnapshot.get("active")) {
 //   //   console.log("bidInPublicDocSnapshot" + id);
@@ -739,7 +742,7 @@ const updateTopMeetings = async (collection, field, meeting) => {
 // });
 
 
-////////////////
+// //////////////
 // OLD
 
 // const optIn = async (client, account, assetIndex) =>
