@@ -26,7 +26,7 @@ const db = admin.firestore();
 // );
 const clientTESTNET = new algosdk.Algodv2(
     "",
-    "https://testnet.algoexplorerapi.io",
+    "https://node.testnet.algoexplorerapi.io",
     "",
 );
 const indexerTESTNET = new algosdk.Indexer(
