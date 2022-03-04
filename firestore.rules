@@ -154,7 +154,8 @@ service cloud.firestore {
 
     // update meeting
     function isEndReason() {
-      return request.resource.data.status == 'END_TIMER' || 
+      return request.resource.data.status == 'END_TIMER_RINGING_PAGE' || 
+             request.resource.data.status == 'END_TIMER_CALL_PAGE' || 
              request.resource.data.status == 'END_A' || 
              request.resource.data.status == 'END_B' || 
              request.resource.data.status == 'END_DISCONNECT';
@@ -163,7 +164,9 @@ service cloud.firestore {
       return resource.data.status.matches('END_.*');
     }
     function isCorrectEndPath() {
-      return (request.resource.data.status == 'END_TIMER' && (resource.data.status == 'ACCEPTED_B' || resource.data.status == 'CALL_STARTED')) ||
+      return 
+             (request.resource.data.status == 'END_TIMER_RINGING_PAGE' && resource.data.status == 'ACCEPTED_B') ||
+             (request.resource.data.status == 'END_TIMER_CALL_PAGE' && resource.data.status == 'CALL_STARTED') ||
              (request.resource.data.status == 'END_A' && request.auth.uid == resource.data.A && (resource.data.status == 'ROOM_CREATED' || resource.data.status.matches('RECEIVED_REMOTE_.') || resource.data.status == 'CALL_STARTED')) ||
              (request.resource.data.status == 'END_B' && request.auth.uid == resource.data.B && (resource.data.status == 'ROOM_CREATED' || resource.data.status.matches('RECEIVED_REMOTE_.') || resource.data.status == 'CALL_STARTED')) ||
              request.resource.data.status == 'END_DISCONNECT';
