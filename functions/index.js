@@ -17,7 +17,7 @@ const algosdk = require("algosdk");
 const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
-// const messaging = admin.messaging();
+const messaging = admin.messaging();
 
 // const clientMAINNET = algosdk.Algodv2(
 //     "",
@@ -47,7 +47,9 @@ const LOUNGE_DICT = {
 };
 const MAX_LOUNGE_HISTORY = 10;
 
-const runWithObj = {minInstances: 1, memory: "128MB"};
+const runWithObj = {
+  minInstances: 1, memory: "128MB",
+};
 
 exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
   const docRefUser = db.collection("users").doc(user.uid);
@@ -137,34 +139,34 @@ exports.bidAdded = functions.runWith(runWithObj).firestore
       const docToken = await docRefToken.get();
       if (!docToken.exists) return; // no token
 
-      // const token = docToken.get("token");
+      const token = docToken.get("token");
 
-      // const message = {
-      //   notification: {
-      //     title: "2i2i",
-      //     body: "Someone wants to meet you",
-      //     image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
-      //   },
-      //   webpush: {
-      //     headers: {
-      //       Urgency: "high",
-      //     },
-      //     fcm_options: {
-      //       link: "https://test.2i2i.app/myHangout",
-      //     },
-      //   },
-      //   token: token,
-      // };
+      const message = {
+        notification: {
+          title: "2i2i",
+          body: "Someone wants to meet you",
+          image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
+        },
+        webpush: {
+          headers: {
+            Urgency: "high",
+          },
+          fcm_options: {
+            link: "https://test.2i2i.app/myHangout",
+          },
+        },
+        token: token,
+      };
 
       // DEBUG
-      // return messaging.send(message)
-      //     .then((response) => {
-      //       // Response is a message ID string.
-      //       console.log("Successfully sent message:", response);
-      //     })
-      //     .catch((error) => {
-      //       console.log("Error sending message:", error);
-      //     });
+      return messaging.send(message)
+          .then((response) => {
+            // Response is a message ID string.
+            console.log("Successfully sent message:", response);
+          })
+          .catch((error) => {
+            console.log("Error sending message:", error);
+          });
     });
 
 // updateDevices({});
@@ -217,36 +219,48 @@ exports.ratingAdded = functions.runWith(runWithObj).firestore
 const notifyA = async (A) => {
   const docRefToken = db.collection("tokens").doc(A);
   const docToken = await docRefToken.get();
+  console.log("notifyA", docToken);
   if (!docToken.exists) return; // no token
 
-  // const token = docToken.get("token");
+  const token = docToken.get("token");
 
-  // const message = {
-  //   notification: {
-  //     title: "2i2i",
-  //     body: "The Host is calling you",
-  //     image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
-  //   },
-  //   webpush: {
-  //     headers: {
-  //       Urgency: "high",
-  //     },
-  //     fcm_options: {
-  //       link: "https://test.2i2i.app",
-  //     },
-  //   },
-  //   token: token,
-  // };
+  const message = {
+    // "to": token,
+    "notification": {
+      title: "2i2i",
+      body: "The Host is calling you",
+    },
+    // "mutable_content": true,
+    // "content_available": true,
+    // "content-available": true,
+    // "priority": "high",
+    "data": {
+      title: "2i2i",
+      body: "The Host is calling you",
+      imageUrl: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
+      type: "Call",
+    },
+    "webpush": {
+      headers: {
+        Urgency: "high",
+      },
+      fcm_options: {
+        link: "https://test.2i2i.app",
+      },
+    },
+    "token": token,
+  };
 
   // DEBUG
-  // return messaging.send(message)
-  //     .then((response) => {
-  //       // Response is a message ID string.
-  //       console.log("Successfully sent message:", response);
-  //     })
-  //     .catch((error) => {
-  //       console.log("Error sending message:", error);
-  //     });
+  console.log("notifyA send");
+  return messaging.send(message)
+      .then((response) => {
+        // Response is a message ID string.
+        console.log("Successfully sent message:", response);
+      })
+      .catch((error) => {
+        console.log("Error sending message:", error);
+      });
 };
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
@@ -385,7 +399,7 @@ const settleALGOMeeting = async (
   if (maxEnergy !== meeting.energy.MAX) console.error("maxEnergy !== meeting.energy.MAX", maxEnergy, meeting.energy.MAX);
 
   let energy = maxEnergy;
-  if (meeting.status !== "END_TIMER") energy = Math.min(meeting.duration * meeting.speed.num, energy);
+  if (meeting.status !== "END_TIMER_CALL_PAGE") energy = Math.min(meeting.duration * meeting.speed.num, energy);
   console.log("energy", energy);
 
   const energyB = Math.ceil(0.9 * energy);
