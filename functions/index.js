@@ -19,24 +19,17 @@ admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 
-// const clientMAINNET = algosdk.Algodv2(
-//     "",
-//     "https://algoexplorerapi.io",
-//     "",
-// );
-const clientTESTNET = new algosdk.Algodv2(
+const algorandAlgod = new algosdk.Algodv2(
     "",
-    "https://node.testnet.algoexplorerapi.io",
+    process.env.ALGORAND_ALGOD,
     "",
 );
-const indexerTESTNET = new algosdk.Indexer(
+const algorandIndexer = new algosdk.Indexer(
     "",
-    "https://algoindexer.testnet.algoexplorerapi.io",
+    process.env.ALGORAND_INDEXER,
     "",
 );
 
-const SYSTEM_ID = 67119462;
-const SYSTEM_ACCOUNT = "PANC6WKDNNLXXKVXWPGUVCTYBPVNL66YCIRJELL2CQP4GKKCEIWQHJZCWU";
 const MIN_TXN_FEE = 1000;
 
 const LOUNGE_DICT = {
@@ -96,7 +89,7 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     console.log("noteString", noteString);
     const note = Buffer.from(noteString).toString("base64");
     console.log("note", note);
-    const lookup = await indexerTESTNET.lookupAccountTransactions(SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
+    const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
     console.log("lookup.transactions.length", lookup.transactions.length);
 
     if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
@@ -106,11 +99,11 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     if (sender !== addrA) return; // pay back to same account only
     const paymentTxn = txn["payment-transaction"];
     const receiver = paymentTxn.receiver;
-    console.log("receiver", receiver, receiver !== SYSTEM_ACCOUNT);
-    if (receiver !== SYSTEM_ACCOUNT) return; // CAREFUL - if we ever change this, cancel would fail
+    console.log("receiver", receiver, receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT);
+    if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return; // CAREFUL - if we ever change this, cancel would fail
 
     const energyA = paymentTxn.amount - 2 * MIN_TXN_FEE; // keep 2 fees
-    const txId = await runUnlock(clientTESTNET, energyA, 0, 0, addrA, addrA);
+    const txId = await runUnlock(algorandAlgod, energyA, 0, 0, addrA, addrA);
 
     const B = docBidOut.get("B");
     console.log("B", B);
@@ -145,14 +138,14 @@ exports.bidAdded = functions.runWith(runWithObj).firestore
         notification: {
           title: "2i2i",
           body: "Someone wants to meet you",
-          image: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
+          image: process.env.NOTIFICATON_IMAGE,
         },
         webpush: {
           headers: {
             Urgency: "high",
           },
           fcm_options: {
-            link: "https://test.2i2i.app/myHangout",
+            link: `https://${process.env.DOMAIN}/myHangout`,
           },
         },
         token: token,
@@ -237,7 +230,7 @@ const notifyA = async (A) => {
     "data": {
       title: "2i2i",
       body: "The Host is calling you",
-      imageUrl: "https://firebasestorage.googleapis.com/v0/b/i2i-test.appspot.com/o/2i2i%20-%20logo%20-%20small%20-%20silver.png?alt=media&token=3e6c1571-9bff-4742-a836-e6fe759d3888",
+      imageUrl: process.env.NOTIFICATON_IMAGE,
       type: "Call",
     },
     "webpush": {
@@ -245,7 +238,7 @@ const notifyA = async (A) => {
         Urgency: "high",
       },
       fcm_options: {
-        link: "https://test.2i2i.app",
+        link: `https://${process.env.DOMAIN}`,
       },
     },
     "token": token,
@@ -347,7 +340,7 @@ const settleMeeting = async (docRef, meeting) => {
   let result = null;
   if (meeting.speed.num !== 0) {
     if (meeting.speed.assetId === 0) {
-      result = await settleALGOMeeting(clientTESTNET, docRef.id, meeting);
+      result = await settleALGOMeeting(algorandAlgod, docRef.id, meeting);
     } else {
       // txId = await settleASAMeeting(clientTESTNET, meeting);
       throw Error("no ASA at the moment");
@@ -381,7 +374,7 @@ const settleALGOMeeting = async (
 ) => {
   const note = Buffer.from(id + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
   console.log("note", note);
-  const lookup = await indexerTESTNET.lookupAccountTransactions(SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
+  const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
   console.log("lookup.transactions.length", lookup.transactions.length);
 
   if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
@@ -391,8 +384,8 @@ const settleALGOMeeting = async (
   if (sender !== meeting.addrA) return; // pay back to same account only
   const paymentTxn = txn["payment-transaction"];
   const receiver = paymentTxn.receiver;
-  console.log("receiver", receiver, receiver !== SYSTEM_ACCOUNT);
-  if (receiver !== SYSTEM_ACCOUNT) return;
+  console.log("receiver", receiver, receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT);
+  if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return;
 
   const maxEnergy = paymentTxn.amount - 4 * MIN_TXN_FEE;
   console.log("maxEnergy", maxEnergy);
@@ -430,7 +423,7 @@ const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB)
   const suggestedParams = await algodclient.getTransactionParams().do();
   const unlockTxn = algosdk.makeApplicationNoOpTxnFromObject({
     from: accountCreator.addr,
-    appIndex: SYSTEM_ID,
+    appIndex: Number(process.env.ALGORAND_SYSTEM_ID),
     appArgs,
     accounts: [addrA, addrB],
     suggestedParams,
@@ -574,13 +567,16 @@ exports.giftALGO = functions.runWith(runWithObj).https.onCall(async (data, conte
   // const uid = context.auth.uid;
   // if (!uid) return;
 
+  // DO NOT GIFT ON mainnet
+  if (process.env.ALGORAND_NET === "mainnet") return;
+
   const creatorAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log("creatorAccount.addr", creatorAccount.addr);
 
   const userAccount = {addr: data.account};
   console.log("data.account", data.account);
 
-  return sendALGO(clientTESTNET,
+  return sendALGO(algorandAlgod,
       creatorAccount,
       userAccount,
       500000);
@@ -898,6 +894,5 @@ const updateTopMeetings = async (collection, field, meeting) => {
 
 // test({meetingId: '9IHLdjOw9eHB0QEkpgYB'})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   const m = await db.collection("meetings").get();
-//   console.log(m.size);
+//   console.log(process.env.ALGORAND_NET);
 // });
