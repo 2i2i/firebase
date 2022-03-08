@@ -312,7 +312,6 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
   }
 
   // is meeting done?
-  console.log("meetingUpdated, newMeeting.status", newMeeting.status);
   if (!newMeeting.status.startsWith("END_")) return 0;
 
   // unlock users
@@ -380,11 +379,11 @@ const settleALGOMeeting = async (
   if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
   const txn = lookup.transactions[0];
   const sender = txn.sender;
-  console.log("sender", sender, meeting.A, sender !== meeting.addrA);
+  console.log("sender", sender, meeting.A, sender === meeting.addrA);
   if (sender !== meeting.addrA) return; // pay back to same account only
   const paymentTxn = txn["payment-transaction"];
   const receiver = paymentTxn.receiver;
-  console.log("receiver", receiver, receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT);
+  console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
   if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return;
 
   const maxEnergy = paymentTxn.amount - 4 * MIN_TXN_FEE;
