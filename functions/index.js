@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:userCreated
+// firebase deploy --only functions:checkUserStatus
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -473,7 +473,6 @@ const disconnectMeeting = async (meetingId, A, B) => {
   });
 };
 exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun((context) => {
-// exports.checkUserStatus = functions.runWith(runWithObj).https.onCall(async (data, context) => {
   const T = new Date();
   T.setSeconds(T.getSeconds() - 10);
   console.log('checkUserStatus, T', T);
@@ -482,10 +481,34 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   const ps = [];
 
   // not OFFLINE, both HBs old => OFFLINE
-  const queryRefForOffline = usersColRef.where("status", "!=", "OFFLINE").where("heartbeatForeground", "<", T).where("heartbeatBackground", "<", T);
-  queryRefForOffline.get().then((querySnapshotForOffline) => {
-    console.log('checkUserStatus, querySnapshotForOffline', querySnapshotForOffline.size);
-    querySnapshotForOffline.forEach(async (queryDocSnapshotUser) => {
+  const queryRefForOnline = usersColRef.where("status", "==", "ONLINE").where("heartbeatForeground", "<", T);
+  queryRefForOnline.get().then((querySnapshot) => {
+    console.log('checkUserStatus, queryRefForOnline', querySnapshot.size);
+    querySnapshot.forEach(async (queryDocSnapshotUser) => {
+      const heartbeatBackground = queryDocSnapshotUser.get("heartbeatBackground");
+      if (heartbeatBackground < T) {
+        const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
+        ps.push(p);
+    
+        const meeting = queryDocSnapshotUser.get("meeting");
+        if (meeting) {
+          const A = queryDocSnapshotUser.get("A");
+          const B = queryDocSnapshotUser.get("B");
+          const p = disconnectMeeting(meeting, A, B);
+          ps.push(p);
+        }
+      }
+      else {
+        const p = queryDocSnapshotUser.ref.update({status: "IDLE"});
+        ps.push(p);
+      }
+    });
+  });
+
+  const queryRefForIdle = usersColRef.where("status", "==", "IDLE").where("heartbeatBackground", "<", T);
+  queryRefForIdle.get().then((querySnapshot) => {
+    console.log('checkUserStatus, queryRefForIdle', querySnapshot.size);
+    querySnapshot.forEach(async (queryDocSnapshotUser) => {
       const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
       ps.push(p);
   
@@ -498,23 +521,12 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
       }
     });
   });
-  
-
-  // ONLINE, HBFore old, HBBack new => IDLE
-  const queryRefForIdle = usersColRef.where("status", "==", "ONLINE").where("heartbeatForeground", "<", T).where("heartbeatBackground", ">=", T);
-  queryRefForIdle.get().then((querySnapshotForIdle) => {
-    console.log('checkUserStatus, querySnapshotForIdle', querySnapshotForIdle.size);
-    querySnapshotForIdle.forEach(async (queryDocSnapshotUser) => {
-      const p = queryDocSnapshotUser.ref.update({status: "IDLE"});
-      ps.push(p);
-    });
-  });
 
   // OFFLINE, HBBack new => IDLE
-  const queryRefForIdleFromOffline = usersColRef.where("status", "==", "OFFLINE").where("heartbeatBackground", ">=", T);
-  queryRefForIdleFromOffline.get().then((querySnapshotForIdleFromOffline) => {
-    console.log('checkUserStatus, querySnapshotForIdleFromOffline', querySnapshotForIdleFromOffline.size);
-    querySnapshotForIdleFromOffline.forEach(async (queryDocSnapshotUser) => {
+  const queryRefForOffline = usersColRef.where("status", "==", "OFFLINE").where("heartbeatBackground", ">=", T);
+  queryRefForOffline.get().then((querySnapshot) => {
+    console.log('checkUserStatus, queryRefForOffline', querySnapshot.size);
+    querySnapshot.forEach(async (queryDocSnapshotUser) => {
       const p = queryDocSnapshotUser.ref.update({status: "IDLE"});
       ps.push(p);
     });
