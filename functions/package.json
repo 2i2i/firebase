@@ -14,12 +14,12 @@
   },
   "main": "index.js",
   "dependencies": {
-    "algosdk": "1.13.1",
-    "firebase-admin": "^10.0.1",
+    "algosdk": "1.14.0",
+    "firebase-admin": "^10.0.2",
     "firebase-functions": "^3.18.1"
   },
   "devDependencies": {
-    "eslint": "^8.6.0",
+    "eslint": "^8.10.0",
     "eslint-config-google": "^0.14.0",
     "firebase-functions-test": "^0.3.3"
   },

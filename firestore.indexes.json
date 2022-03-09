@@ -13,6 +13,98 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "meetings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "isSettled",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "speed.assetId",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "duration",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "topDurations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "duration",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "ts",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bidInsPublic",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "ts",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "meetings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "isSettled",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "speed.assetId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "speed.num",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tags",
+          "order": "ARRAYS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "topSpeeds",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "speed.num",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "ts",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []
