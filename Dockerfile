@@ -8,7 +8,8 @@ FROM node:16
 RUN npm install -g firebase-tools
 
 # install lint
-RUN npm install -g eslint
+# RUN npm install -g eslint
+# RUN npm install -g eslint-config-google
 
 ADD firebase.bash /usr/bin
 RUN chmod +x /usr/bin/firebase.bash
