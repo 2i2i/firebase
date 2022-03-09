@@ -23,6 +23,11 @@ service cloud.firestore {
       // any logged in user can read
       allow read, write: if true;
     }
+    // calls
+    match /calls/{document=**} {
+      // any logged in user can read
+      allow read, write: if true;
+    }
 
     /////////////////////////
     // general
