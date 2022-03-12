@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:giftALGO
+// firebase deploy --only functions:checkUserStatus
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -53,7 +53,8 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
     name: "",
     rating: 1,
     numRatings: 0,
-    heartbeat: admin.firestore.FieldValue.serverTimestamp(),
+    heartbeatBackground: admin.firestore.FieldValue.serverTimestamp(),
+    heartbeatForeground: admin.firestore.FieldValue.serverTimestamp(),
     tags: [],
     rule: {
       // set also in frontend (userModel)
@@ -451,39 +452,89 @@ const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB)
 };
 
 // every minute
-const checkUserStatusInternal = async (T, usersColRef, status) => {
-  const queryRef = usersColRef.where("status", "==", status).where("heartbeat", "<", T);
-  const querySnapshot = await queryRef.get();
-  console.log("querySnapshot.size", querySnapshot.size);
-  const promises = [];
-  querySnapshot.forEach(async (queryDocSnapshotUser) => {
-    console.log("queryDocSnapshotUser.id", queryDocSnapshotUser.id);
-    const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
-    promises.push(p);
-    const meeting = queryDocSnapshotUser.get("meeting");
-    console.log("meeting", meeting);
-    if (meeting) {
-      const meetingObj = {
-        status: "END_DISCONNECT",
-        statusHistory: admin.firestore.FieldValue.arrayUnion({value: "END_DISCONNECT", ts: admin.firestore.Timestamp.now()}),
-        active: false,
-        end: admin.firestore.FieldValue.serverTimestamp(),
-      };
-      const meetingDocRef = db.collection("meetings").doc(meeting);
-      const meetingPromise = meetingDocRef.update(meetingObj);
-      promises.push(meetingPromise);
-    }
+const disconnectMeeting = async (meetingId, A, B) => {
+  const meetingObj = {
+    status: "END_DISCONNECT",
+    statusHistory: admin.firestore.FieldValue.arrayUnion({value: "END_DISCONNECT", ts: admin.firestore.Timestamp.now()}),
+    active: false,
+    end: admin.firestore.FieldValue.serverTimestamp(),
+  };
+  const meetingDocRef = db.collection("meetings").doc(meetingId);
+
+  const colRef = db.collection("users");
+  const docRefA = colRef.doc(A);
+  const docRefB = colRef.doc(B);
+  const unlockObj = {meeting: null};
+
+  return db.runTransaction(async (T) => {
+    T.update(meetingDocRef, meetingObj);
+    T.update(docRefA, unlockObj);
+    T.update(docRefB, unlockObj);
   });
-  return promises;
 };
 exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun((context) => {
-  console.log("context", context);
   const T = new Date();
   T.setSeconds(T.getSeconds() - 10);
+  console.log('checkUserStatus, T', T);
+
   const usersColRef = db.collection("users");
-  const p1 = checkUserStatusInternal(T, usersColRef, "ONLINE");
-  const p2 = checkUserStatusInternal(T, usersColRef, "IDLE");
-  return Promise.all([...p1, ...p2]);
+  const ps = [];
+
+  // not OFFLINE, both HBs old => OFFLINE
+  const queryRefForOnline = usersColRef.where("status", "==", "ONLINE").where("heartbeatForeground", "<", T);
+  queryRefForOnline.get().then((querySnapshot) => {
+    console.log('checkUserStatus, queryRefForOnline', querySnapshot.size);
+    querySnapshot.forEach(async (queryDocSnapshotUser) => {
+      const heartbeatBackground = queryDocSnapshotUser.get("heartbeatBackground");
+      if (heartbeatBackground < T) {
+        const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
+        ps.push(p);
+    
+        const meeting = queryDocSnapshotUser.get("meeting");
+        if (meeting) {
+          const A = queryDocSnapshotUser.get("A");
+          const B = queryDocSnapshotUser.get("B");
+          const p = disconnectMeeting(meeting, A, B);
+          ps.push(p);
+        }
+      }
+      else {
+        const p = queryDocSnapshotUser.ref.update({status: "IDLE"});
+        ps.push(p);
+      }
+    });
+  });
+
+  const queryRefForIdle = usersColRef.where("status", "==", "IDLE").where("heartbeatBackground", "<", T);
+  queryRefForIdle.get().then((querySnapshot) => {
+    console.log('checkUserStatus, queryRefForIdle', querySnapshot.size);
+    querySnapshot.forEach(async (queryDocSnapshotUser) => {
+      const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
+      ps.push(p);
+  
+      const meeting = queryDocSnapshotUser.get("meeting");
+      if (meeting) {
+        const A = queryDocSnapshotUser.get("A");
+        const B = queryDocSnapshotUser.get("B");
+        const p = disconnectMeeting(meeting, A, B);
+        ps.push(p);
+      }
+    });
+  });
+
+  // OFFLINE, HBBack new => IDLE
+  const queryRefForOffline = usersColRef.where("status", "==", "OFFLINE").where("heartbeatBackground", ">=", T);
+  queryRefForOffline.get().then((querySnapshot) => {
+    console.log('checkUserStatus, queryRefForOffline', querySnapshot.size);
+    querySnapshot.forEach(async (queryDocSnapshotUser) => {
+      const p = queryDocSnapshotUser.ref.update({status: "IDLE"});
+      ps.push(p);
+    });
+  });
+
+  console.log('checkUserStatus, ps', ps.length);
+
+  return Promise.all(ps);
 });
 
 const sendALGO = async (client, fromAccount, toAccount, amount) => {
@@ -886,6 +937,35 @@ const updateTopMeetings = async (collection, field, meeting) => {
 //     const heartbeat = queryDocSnapshot.get("heartbeat");
 //     if (heartbeat) continue;
 //     await queryDocSnapshot.ref.update({"heartbeat": 0});
+//   }
+// });
+
+// exports.changeHeartbeat = functions.https.onCall(async (data, context) => {
+//   const usersColRef = db.collection("users");
+//   const querySnapshot = await usersColRef.get();
+//   const ps = [];
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     // console.log(queryDocSnapshot.id);
+//     // const heartbeatForeground = queryDocSnapshot.get("heartbeatForeground");
+//     // const heartbeatBackground = queryDocSnapshot.get("heartbeatBackground");
+//     // console.log('heartbeatForeground', heartbeatForeground);
+//     // console.log('heartbeatBackground', heartbeatBackground);
+//     // if (heartbeatForeground && heartbeatBackground) continue;
+//     const heartbeat = queryDocSnapshot.get("heartbeat");
+//     // console.log('heartbeat', heartbeat);
+//     if (!heartbeat) continue;
+//     const p = queryDocSnapshot.ref.update({"heartbeat": admin.firestore.FieldValue.delete(), "heartbeatForeground": heartbeat, "heartbeatBackground": heartbeat});
+//     ps.push(p);
+//   }
+//   return Promise.all(ps);
+// });
+
+// exports.usersWithBadStructure = functions.https.onCall(async (data, context) => {
+//   const usersColRef = db.collection("users");
+//   const querySnapshot = await usersColRef.get();
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const status = queryDocSnapshot.get("status");
+//     if (!status) console.log(queryDocSnapshot.id);
 //   }
 // });
 

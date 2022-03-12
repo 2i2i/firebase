@@ -66,10 +66,10 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys() == ['meeting'].toSet();
     }
     function userUpdate() {
-      let fullUserFields = ['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeat', 'tags', 'rule', 'loungeHistory', 'loungeHistoryIndex', 'blocked', 'friends'];
+      let fullUserFields = ['status', 'meeting', 'bio', 'name', 'rating', 'numRatings', 'heartbeatForeground', 'heartbeatBackground', 'tags', 'rule', 'loungeHistory', 'loungeHistoryIndex', 'blocked', 'friends'];
       let isFullUser = resource.data.keys().hasAll(fullUserFields);
       let k = request.resource.data.diff(resource.data).affectedKeys();
-      let isUpdate = k.hasOnly(['status', 'bio', 'name', 'heartbeat', 'tags', 'rule', 'blocked', 'friends']);
+      let isUpdate = k.hasOnly(['status', 'bio', 'name', 'heartbeatForeground', 'heartbeatBackground', 'tags', 'rule', 'blocked', 'friends']);
       return isFullUser && isUpdate;
     }
     match /users/{userId} {
@@ -78,7 +78,7 @@ service cloud.firestore {
       
       // only self user can write
       // resource.data.meeting != null to avoid heartbeats of users that do not exist anymore
-      // rule for update bio, name, tags, heartbeat, status
+      // rule for update bio, name, tags, heartbeatForeground, heartbeatBackground, status
       allow update: if request.auth != null && request.auth.uid == userId && userUpdate();
 
       // TODO to secure more, add bid to user (null or current bid). then rules can check for bid existance and consistency
@@ -151,6 +151,12 @@ service cloud.firestore {
     match /meetings/{meetingId}/{subCollectionId}/{document=**} {
       allow read, write: if request.auth != null && subCollectionId.matches('.*' + request.auth.uid + '.*');
     }
+    // meetingStatus
+    match /meetings/{meetingId}/private/status {
+      // any logged in user can read
+      allow read, write: if true;
+    }
+
 
     // update meeting
     function isEndReason() {
