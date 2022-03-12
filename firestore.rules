@@ -23,11 +23,6 @@ service cloud.firestore {
       // any logged in user can read
       allow read, write: if true;
     }
-    // calls
-    match /calls/{document=**} {
-      // any logged in user can read
-      allow read, write: if true;
-    }
 
     /////////////////////////
     // general
@@ -156,6 +151,12 @@ service cloud.firestore {
     match /meetings/{meetingId}/{subCollectionId}/{document=**} {
       allow read, write: if request.auth != null && subCollectionId.matches('.*' + request.auth.uid + '.*');
     }
+    // meetingStatus
+    match /meetings/{meetingId}/private/status {
+      // any logged in user can read
+      allow read, write: if true;
+    }
+
 
     // update meeting
     function isEndReason() {
