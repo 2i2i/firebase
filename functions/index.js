@@ -965,9 +965,28 @@ const updateTopMeetings = async (collection, field, meeting) => {
 //   const usersColRef = db.collection("users");
 //   const querySnapshot = await usersColRef.get();
 //   for (const queryDocSnapshot of querySnapshot.docs) {
-//     const status = queryDocSnapshot.get("status");
-//     if (!status) console.log(queryDocSnapshot.id);
+//     const missingField = queryDocSnapshot.get("rating");
+//     if (!missingField) console.log(queryDocSnapshot.id);
 //   }
+//   console.log("end");
+// });
+
+// exports.addImageUrl = functions.https.onCall(async (data, context) => {
+//   const usersColRef = db.collection("users");
+//   const querySnapshot = await usersColRef.get();
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const imageUrl = queryDocSnapshot.get("imageUrl");
+//     if (imageUrl) continue;
+//     // if (queryDocSnapshot.id === "JKeoaTdK0TPcubowLmeNEBXbwI72") {
+//     //   console.log(imageUrl);
+//     //   if (imageUrl) continue;
+//     //   console.log("STRANGE");
+//     // }
+//     // console.log(queryDocSnapshot.id);
+//     // console.log(imageUrl);
+//     await queryDocSnapshot.ref.update({"imageUrl": null});
+//   }
+//   console.log("end");
 // });
 
 // TEST
