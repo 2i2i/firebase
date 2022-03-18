@@ -71,6 +71,7 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
     loungeHistoryIndex: -1,
     blocked: [],
     friends: [],
+    imageUrl: null,
   });
 });
 
