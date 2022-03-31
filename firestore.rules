@@ -95,6 +95,12 @@ service cloud.firestore {
     }
 
     /////////////////////////
+    // algorand_accounts
+    match /users/{userId}/algorand_accounts/{accountId} {
+      allow read, write: if request.auth != null && userId == request.auth.uid;
+    }
+
+    /////////////////////////
     // bids
     // bidId matches across bidIn and bidOut
     match /users/{userId}/bidOuts/{bidId} { // userId == A
