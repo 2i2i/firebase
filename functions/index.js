@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:checkUserStatus
+// firebase deploy --only functions:meetingCreated
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -220,15 +220,15 @@ const notifyA = async (A) => {
   const token = docToken.get("token");
 
   const message = {
-    // "to": token,
+    "to": token,
     "notification": {
       title: "2i2i",
       body: "The Host is calling you",
     },
-    // "mutable_content": true,
-    // "content_available": true,
-    // "content-available": true,
-    // "priority": "high",
+    "mutable_content": true,
+    "content_available": true,
+    "content-available": true,
+    "priority": "high",
     "data": {
       title: "2i2i",
       body: "The Host is calling you",
@@ -243,7 +243,7 @@ const notifyA = async (A) => {
         link: `https://${process.env.DOMAIN}`,
       },
     },
-    "token": token,
+    // "token": token,
   };
 
   // DEBUG
