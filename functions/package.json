@@ -16,7 +16,7 @@
   "dependencies": {
     "algosdk": "1.14.0",
     "firebase-admin": "^10.0.2",
-    "firebase-functions": "^3.18.1"
+    "firebase-functions": "^3.19.0"
   },
   "devDependencies": {
     "eslint": "^8.10.0",

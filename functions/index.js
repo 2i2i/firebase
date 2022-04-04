@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:checkUserStatus
+// firebase deploy --only functions:meetingCreated
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -71,6 +71,7 @@ exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) 
     loungeHistoryIndex: -1,
     blocked: [],
     friends: [],
+    imageUrl: null,
   });
 });
 
@@ -219,15 +220,15 @@ const notifyA = async (A) => {
   const token = docToken.get("token");
 
   const message = {
-    // "to": token,
+    "to": token,
     "notification": {
       title: "2i2i",
       body: "The Host is calling you",
     },
-    // "mutable_content": true,
-    // "content_available": true,
-    // "content-available": true,
-    // "priority": "high",
+    "mutable_content": true,
+    "content_available": true,
+    "content-available": true,
+    "priority": "high",
     "data": {
       title: "2i2i",
       body: "The Host is calling you",
@@ -242,7 +243,7 @@ const notifyA = async (A) => {
         link: `https://${process.env.DOMAIN}`,
       },
     },
-    "token": token,
+    // "token": token,
   };
 
   // DEBUG
@@ -964,9 +965,28 @@ const updateTopMeetings = async (collection, field, meeting) => {
 //   const usersColRef = db.collection("users");
 //   const querySnapshot = await usersColRef.get();
 //   for (const queryDocSnapshot of querySnapshot.docs) {
-//     const status = queryDocSnapshot.get("status");
-//     if (!status) console.log(queryDocSnapshot.id);
+//     const missingField = queryDocSnapshot.get("rating");
+//     if (!missingField) console.log(queryDocSnapshot.id);
 //   }
+//   console.log("end");
+// });
+
+// exports.addImageUrl = functions.https.onCall(async (data, context) => {
+//   const usersColRef = db.collection("users");
+//   const querySnapshot = await usersColRef.get();
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const imageUrl = queryDocSnapshot.get("imageUrl");
+//     if (imageUrl) continue;
+//     // if (queryDocSnapshot.id === "JKeoaTdK0TPcubowLmeNEBXbwI72") {
+//     //   console.log(imageUrl);
+//     //   if (imageUrl) continue;
+//     //   console.log("STRANGE");
+//     // }
+//     // console.log(queryDocSnapshot.id);
+//     // console.log(imageUrl);
+//     await queryDocSnapshot.ref.update({"imageUrl": null});
+//   }
+//   console.log("end");
 // });
 
 // TEST
