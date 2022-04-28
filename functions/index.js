@@ -44,36 +44,37 @@ const runWithObj = {
   minInstances: 1, memory: "128MB",
 };
 
-exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
-  const docRefUser = db.collection("users").doc(user.uid);
-  return docRefUser.create({
-    status: "ONLINE",
-    meeting: null,
-    bio: "",
-    name: "",
-    rating: 1,
-    numRatings: 0,
-    heartbeatBackground: admin.firestore.FieldValue.serverTimestamp(),
-    heartbeatForeground: admin.firestore.FieldValue.serverTimestamp(),
-    tags: [],
-    rule: {
-      // set also in frontend (userModel)
-      maxMeetingDuration: 300,
-      minSpeed: 0,
-      importance: {
-        lurker: 0,
-        chrony: 1,
-        highroller: 4,
-        eccentric: 0,
-      },
-    },
-    loungeHistory: [],
-    loungeHistoryIndex: -1,
-    blocked: [],
-    friends: [],
-    imageUrl: null,
-  });
-});
+// exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
+//   const docRefUser = db.collection("users").doc(user.uid);
+//   return docRefUser.create({
+//     status: "ONLINE",
+//     meeting: null,
+//     bio: "",
+//     name: "",
+//     rating: 1,
+//     numRatings: 0,
+//     heartbeatBackground: admin.firestore.FieldValue.serverTimestamp(),
+//     heartbeatForeground: admin.firestore.FieldValue.serverTimestamp(),
+//     tags: [],
+//     rule: {
+//       // set also in frontend (userModel)
+//       maxMeetingDuration: 300,
+//       minSpeed: 0,
+//       importance: {
+//         lurker: 0,
+//         chrony: 1,
+//         highroller: 4,
+//         eccentric: 0,
+//       },
+//     },
+//     loungeHistory: [],
+//     loungeHistoryIndex: -1,
+//     blocked: [],
+//     friends: [],
+//     imageUrl: null,
+//     socialLinks: [],
+//   });
+// });
 
 exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
   const uid = context.auth.uid;
@@ -126,43 +127,43 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
 
 // https://imgur.com/Jwih3Ac
 // https://imgur.com/QEzobjq
-exports.bidAdded = functions.runWith(runWithObj).firestore
-    .document("users/{userId}/bidInsPublic/{bidId}")
-    .onCreate(async (change, context) => {
-      const userId = context.params.userId;
-      const docRefToken = db.collection("tokens").doc(userId);
-      const docToken = await docRefToken.get();
-      if (!docToken.exists) return; // no token
+// exports.bidAdded = functions.runWith(runWithObj).firestore
+//     .document("users/{userId}/bidInsPublic/{bidId}")
+//     .onCreate(async (change, context) => {
+//       const userId = context.params.userId;
+//       const docRefToken = db.collection("tokens").doc(userId);
+//       const docToken = await docRefToken.get();
+//       if (!docToken.exists) return; // no token
 
-      const token = docToken.get("token");
+//       const token = docToken.get("token");
 
-      const message = {
-        notification: {
-          title: "2i2i",
-          body: "Someone wants to meet you",
-          image: process.env.NOTIFICATON_IMAGE,
-        },
-        webpush: {
-          headers: {
-            Urgency: "high",
-          },
-          fcm_options: {
-            link: `https://${process.env.DOMAIN}/myHangout`,
-          },
-        },
-        token: token,
-      };
+//       const message = {
+//         notification: {
+//           title: "2i2i",
+//           body: "Someone wants to meet you",
+//           image: process.env.NOTIFICATON_IMAGE,
+//         },
+//         webpush: {
+//           headers: {
+//             Urgency: "high",
+//           },
+//           fcm_options: {
+//             link: `https://${process.env.DOMAIN}/myHangout`,
+//           },
+//         },
+//         token: token,
+//       };
 
-      // DEBUG
-      return messaging.send(message)
-          .then((response) => {
-            // Response is a message ID string.
-            console.log("Successfully sent message:", response);
-          })
-          .catch((error) => {
-            console.log("Error sending message:", error);
-          });
-    });
+//       // DEBUG
+//       return messaging.send(message)
+//           .then((response) => {
+//             // Response is a message ID string.
+//             console.log("Successfully sent message:", response);
+//           })
+//           .catch((error) => {
+//             console.log("Error sending message:", error);
+//           });
+//     });
 
 // updateDevices({});
 // exports.updateDevices = functions.runWith(runWithObj).https.onCall(async (data, context) => {
@@ -211,52 +212,52 @@ exports.ratingAdded = functions.runWith(runWithObj).firestore
       });
     });
 
-const notifyA = async (A) => {
-  const docRefToken = db.collection("tokens").doc(A);
-  const docToken = await docRefToken.get();
-  console.log("notifyA", docToken);
-  if (!docToken.exists) return; // no token
+// const notifyA = async (A) => {
+//   const docRefToken = db.collection("tokens").doc(A);
+//   const docToken = await docRefToken.get();
+//   console.log("notifyA", docToken);
+//   if (!docToken.exists) return; // no token
 
-  const token = docToken.get("token");
+//   const token = docToken.get("token");
 
-  const message = {
-    "to": token,
-    "notification": {
-      title: "2i2i",
-      body: "The Host is calling you",
-    },
-    "mutable_content": true,
-    "content_available": true,
-    "content-available": true,
-    "priority": "high",
-    "data": {
-      title: "2i2i",
-      body: "The Host is calling you",
-      imageUrl: process.env.NOTIFICATON_IMAGE,
-      type: "Call",
-    },
-    "webpush": {
-      headers: {
-        Urgency: "high",
-      },
-      fcm_options: {
-        link: `https://${process.env.DOMAIN}`,
-      },
-    },
-    // "token": token,
-  };
+//   const message = {
+//     "to": token,
+//     "notification": {
+//       title: "2i2i",
+//       body: "The Host is calling you",
+//     },
+//     "mutable_content": true,
+//     "content_available": true,
+//     "content-available": true,
+//     "priority": "high",
+//     "data": {
+//       title: "2i2i",
+//       body: "The Host is calling you",
+//       imageUrl: process.env.NOTIFICATON_IMAGE,
+//       type: "Call",
+//     },
+//     "webpush": {
+//       headers: {
+//         Urgency: "high",
+//       },
+//       fcm_options: {
+//         link: `https://${process.env.DOMAIN}`,
+//       },
+//     },
+//     // "token": token,
+//   };
 
-  // DEBUG
-  console.log("notifyA send");
-  return messaging.send(message)
-      .then((response) => {
-        // Response is a message ID string.
-        console.log("Successfully sent message:", response);
-      })
-      .catch((error) => {
-        console.log("Error sending message:", error);
-      });
-};
+//   // DEBUG
+//   console.log("notifyA send");
+//   return messaging.send(message)
+//       .then((response) => {
+//         // Response is a message ID string.
+//         console.log("Successfully sent message:", response);
+//       })
+//       .catch((error) => {
+//         console.log("Error sending message:", error);
+//       });
+// };
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onCreate(async (change, context) => {
@@ -282,9 +283,10 @@ exports.meetingCreated = functions.runWith(runWithObj).firestore
         console.log("meetingUpdated, new loungeHistory");
       });
 
-      const p2 = notifyA(meeting.A);
+      // const p2 = notifyA(meeting.A);
 
-      return Promise.all([p1, p2]);
+      // return Promise.all([p1, p2]);
+      return p1;
     });
 exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meetings/{meetingId}").onUpdate(async (change, context) => {
   const oldMeeting = change.before.data();
@@ -607,31 +609,31 @@ const sendALGO = async (client, fromAccount, toAccount, amount) => {
 // const NOVALUE_ASSET_ID = 29147319;
 
 // giftALGO({account: "2I2IXTP67KSNJ5FQXHUJP5WZBX2JTFYEBVTBYFF3UUJ3SQKXSZ3QHZNNPY"}, {auth: {uid: "uid"}})
-exports.giftALGO = functions.runWith(runWithObj).https.onCall(async (data, context) => {
-  // console.log("context", context);
-  // console.log("data", data);
-  // if (context.app == undefined) {
-  //   throw new functions.https.HttpsError(
-  //       "failed-precondition",
-  //       "The function must be called from an App Check verified app.");
-  // }
-  // const uid = context.auth.uid;
-  // if (!uid) return;
+// exports.giftALGO = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+//   // console.log("context", context);
+//   // console.log("data", data);
+//   // if (context.app == undefined) {
+//   //   throw new functions.https.HttpsError(
+//   //       "failed-precondition",
+//   //       "The function must be called from an App Check verified app.");
+//   // }
+//   // const uid = context.auth.uid;
+//   // if (!uid) return;
 
-  // DO NOT GIFT ON mainnet
-  if (process.env.ALGORAND_NET === "mainnet") return;
+//   // DO NOT GIFT ON mainnet
+//   if (process.env.ALGORAND_NET === "mainnet") return;
 
-  const creatorAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
-  console.log("creatorAccount.addr", creatorAccount.addr);
+//   const creatorAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+//   console.log("creatorAccount.addr", creatorAccount.addr);
 
-  const userAccount = {addr: data.account};
-  console.log("data.account", data.account);
+//   const userAccount = {addr: data.account};
+//   console.log("data.account", data.account);
 
-  return sendALGO(algorandAlgod,
-      creatorAccount,
-      userAccount,
-      500000);
-});
+//   return sendALGO(algorandAlgod,
+//       creatorAccount,
+//       userAccount,
+//       500000);
+// });
 
 // exports.giftASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
 //   const creatorAccount = algosdk.mnemonicToSecretKey(CREATOR_PRIVATE_KEY);
