@@ -164,12 +164,6 @@ service cloud.firestore {
     match /meetings/{meetingId}/{subCollectionId}/{document=**} {
       allow read, write: if request.auth != null && subCollectionId.matches('.*' + request.auth.uid + '.*');
     }
-    // meetingStatus
-    match /meetings/{meetingId}/private/status {
-      // any logged in user can read
-      allow read, write: if true;
-    }
-
 
     // update meeting
     function isEndReason() {
@@ -205,6 +199,10 @@ service cloud.firestore {
     }
     match /meetings/{meetingId} {
       allow update: if request.auth != null && isAOrB(resource.data) && (isEnd() || isAdvance());
+      
+      // muting
+      allow update: if request.auth != null && resource.data.A == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mutedVideoA', 'mutedAudioA']);
+      allow update: if request.auth != null && resource.data.B == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mutedVideoB', 'mutedAudioB']);
     }
 
     // create meeting
