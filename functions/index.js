@@ -991,6 +991,24 @@ const updateTopMeetings = async (collection, field, meeting) => {
 //   console.log("end");
 // });
 
+// exports.addSocialLinks = functions.https.onCall(async (data, context) => {
+//   const usersColRef = db.collection("users");
+//   const querySnapshot = await usersColRef.get();
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const socialLinks = queryDocSnapshot.get("socialLinks");
+//     if (socialLinks) continue;
+//     // if (queryDocSnapshot.id === "JKeoaTdK0TPcubowLmeNEBXbwI72") {
+//     //   console.log(imageUrl);
+//     //   if (imageUrl) continue;
+//     //   console.log("STRANGE");
+//     // }
+//     console.log(queryDocSnapshot.id);
+//     // console.log(imageUrl);
+//     await queryDocSnapshot.ref.update({"socialLinks": []});
+//   }
+//   console.log("end");
+// });
+
 // TEST
 
 // test({meetingId: '9IHLdjOw9eHB0QEkpgYB'})
