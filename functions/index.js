@@ -44,6 +44,20 @@ const runWithObj = {
   minInstances: 1, memory: "128MB",
 };
 
+exports.createToken = functions.https.onCall(async (data, context) => {
+  let id = data.token;
+
+  let result;
+  try {
+      result = await getAuth().createCustomToken(id);
+      functions.logger.info("Custom token for " + id + " is " + result);
+  } catch (e) {
+      result = 'Error ' + e.toString();
+      functions.logger.info("Custom token for " + id + " Have " + result);
+  }
+  return {'result': result};
+});
+
 // exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
 //   const docRefUser = db.collection("users").doc(user.uid);
 //   return docRefUser.create({
