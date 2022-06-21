@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:meetingCreated
+// firebase deploy --only functions:createToken
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -18,6 +18,7 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
+const { getAuth } = require("firebase-admin/auth");
 
 const algorandAlgod = new algosdk.Algodv2(
     "",
