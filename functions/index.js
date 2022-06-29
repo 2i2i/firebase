@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:createToken
+// firebase deploy --only functions:deleteMe
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -17,7 +17,7 @@ const algosdk = require("algosdk");
 const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
-const messaging = admin.messaging();
+// const messaging = admin.messaging();
 const { getAuth } = require("firebase-admin/auth");
 
 const algorandAlgod = new algosdk.Algodv2(
@@ -767,6 +767,31 @@ const updateTopMeetings = async (collection, field, meeting) => {
   });
 };
 
+const deleteDocsInCollection = (colRef, promises) =>
+  colRef.listDocuments().then((docRefs) => {
+    docRefs.forEach(docRef => promises.push(docRef.delete()));
+  });
+const deleteMeInternal = (uid) => {
+  const p = [];
+
+  p.push(admin.auth().deleteUsers([uid]));
+  p.push(db.collection("devices").doc(uid).delete());
+  p.push(db.collection("tokens").doc(uid).delete());
+
+  const userDocRef = db.collection("users").doc(uid);
+  deleteDocsInCollection(userDocRef.collection("algorand_accounts"), p);
+  deleteDocsInCollection(userDocRef.collection("bidInsPrivate"), p);
+  deleteDocsInCollection(userDocRef.collection("bidInsPublic"), p);
+  deleteDocsInCollection(userDocRef.collection("bidOuts"), p);
+  deleteDocsInCollection(userDocRef.collection("ratings"), p);
+  deleteDocsInCollection(userDocRef.collection("chat"), p);
+  p.push(userDocRef.delete());
+
+  // TODO del image in storage
+
+  return Promise.all(p);
+}
+exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInternal(context.auth.uid));
 
 // //////////////
 // ADMIN
@@ -901,9 +926,38 @@ const updateTopMeetings = async (collection, field, meeting) => {
 // ONLY USE MANUALLY
 // deleteAllAuthUsers({})
 // exports.deleteAllAuthUsers = functions.https.onCall(async (data, context) => {
-//   const users = await admin.auth().listUsers();
-//   return admin.auth().deleteUsers(users.users.map(u => u.uid));
+//   const listUsersResult = await admin.auth().listUsers();
+//   return admin.auth().deleteUsers(listUsersResult.users.map(u => u.uid));
 // });
+// exports.deleteUsers = functions.https.onCall(async (data, context) => {
+//   // // search
+//   // const listUsersResult = await admin.auth().listUsers();
+//   // const p = [];
+//   // for (const user of listUsersResult.users) {
+//   //   const userDocRef = db.collection("users").doc(user.uid);
+//   //   const userDoc = await userDocRef.get();
+//   //   const name = userDoc.get("name");
+//   //   if (!name) {
+//   //     p.push(user.uid);
+//   //     continue;
+//   //   }
+//   //   const lName = name.toLowerCase();
+//   //   if (lName.includes("chandresh") || lName.includes("test") || lName.includes("ravi")) {
+//   //     p.push(user.uid);
+//   //     continue;
+//   //   }
+//   // }
+//   // const ps = p.join("\",\"");
+//   // console.log(ps);
+
+//   // delete
+// //   uids = [];
+// //   for (const uid of uids) {
+// //     console.log(uid);
+// //     await deleteMeInternal(uid);
+// //   }
+// });
+
 
 // optInToASA({txId: 'QO47JEGJXGRLUKVQ44CKZXQ2X3C4R3JFT22GCUFABNVIC33BZ4AQ', assetId: 23828034})
 // exports.optInToASA = functions.runWith({minInstances: MIN_INSTANCES}).https.onCall(async (data, context) => {
@@ -1022,6 +1076,45 @@ const updateTopMeetings = async (collection, field, meeting) => {
 //     await queryDocSnapshot.ref.update({"socialLinks": []});
 //   }
 //   console.log("end");
+// });
+
+// TODO not finished yet
+// exports.changeAlgorandAccountsDoc = functions.https.onCall(async (data, context) => {
+//   const usersColRef = db.collection("users");
+//   const querySnapshot = await usersColRef.get();
+//   const ps = [];
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+
+//     queryDocSnapshot.ref.collection("algorand_accounts")
+
+//     // console.log(queryDocSnapshot.id);
+//     // const heartbeatForeground = queryDocSnapshot.get("heartbeatForeground");
+//     // const heartbeatBackground = queryDocSnapshot.get("heartbeatBackground");
+//     // console.log('heartbeatForeground', heartbeatForeground);
+//     // console.log('heartbeatBackground', heartbeatBackground);
+//     // if (heartbeatForeground && heartbeatBackground) continue;
+//     const heartbeat = queryDocSnapshot.get("heartbeat");
+//     // console.log('heartbeat', heartbeat);
+//     if (!heartbeat) continue;
+//     const p = queryDocSnapshot.ref.update({"heartbeat": admin.firestore.FieldValue.delete(), "heartbeatForeground": heartbeat, "heartbeatBackground": heartbeat});
+//     ps.push(p);
+//   }
+//   return Promise.all(ps);
+// });
+
+// exports.checkForOldRules = functions.https.onCall(async (data, context) => {
+//   const usersColRef = db.collection("users");
+//   const querySnapshot = await usersColRef.get();
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+
+//     const rule = queryDocSnapshot.get("rule");
+//     const c = rule.importance.chrony;
+//     const h = rule.importance.highroller;
+
+//     if (c !== 1 && h !== 1) {
+//       console.log(`${queryDocSnapshot.id} ${c} ${h}`);
+//     }
+//   }
 // });
 
 // TEST
