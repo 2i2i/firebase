@@ -951,11 +951,11 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 //   // console.log(ps);
 
 //   // delete
-// //   uids = [];
-// //   for (const uid of uids) {
-// //     console.log(uid);
-// //     await deleteMeInternal(uid);
-// //   }
+//   // uids = [];
+//   // for (const uid of uids) {
+//   //   console.log(uid);
+//   //   await deleteMeInternal(uid);
+//   // }
 // });
 
 
