@@ -238,7 +238,7 @@ service cloud.firestore {
     // TODO: how to mitigate that?
     match /users/{userId}/ratings/{meetingId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.keys().toSet() == ['rating', 'comment'].toSet() && isAOrB(get(/databases/$(database)/documents/meetings/$(meetingId)).data);
+      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.keys().toSet() == ['rating', 'comment', 'createdAt'].toSet() && isAOrB(get(/databases/$(database)/documents/meetings/$(meetingId)).data);
     }
 
     /////////////////////////
