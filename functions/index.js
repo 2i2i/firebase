@@ -15,10 +15,9 @@ const algosdk = require("algosdk");
 // algosdk.algosToMicroalgos(1);
 
 const admin = require("firebase-admin");
-// admin.initializeApp();
 admin.initializeApp(
   {
-      "serviceAccountId":"i2i-test@appspot.gserviceaccount.com"
+      "serviceAccountId": process.env.SERVICE_ACCOUNT_ID
   }
 );
 const db = admin.firestore();
