@@ -67,14 +67,14 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys() == ['meeting'].toSet();
     }
     function userUpdate() {
-      let fullUserFields = ['status', 'meeting', 'bio', 'name', 'imageUrl', 'rating', 'numRatings', 'heartbeatForeground', 'heartbeatBackground', 'tags', 'rule', 'loungeHistory', 'loungeHistoryIndex', 'blocked', 'friends', 'socialLinks'];
+      let fullUserFields = ['url', 'status', 'meeting', 'bio', 'name', 'imageUrl', 'rating', 'numRatings', 'heartbeatForeground', 'heartbeatBackground', 'tags', 'rule', 'loungeHistory', 'loungeHistoryIndex', 'blocked', 'friends', 'socialLinks'];
       let isFullUser = resource.data.keys().hasAll(fullUserFields);
       let k = request.resource.data.diff(resource.data).affectedKeys();
-      let isUpdate = k.hasOnly(['status', 'bio', 'name', 'imageUrl', 'heartbeatForeground', 'heartbeatBackground', 'tags', 'rule', 'blocked', 'friends', 'socialLinks']);
+      let isUpdate = k.hasOnly(['url', 'status', 'bio', 'name', 'imageUrl', 'heartbeatForeground', 'heartbeatBackground', 'tags', 'rule', 'blocked', 'friends', 'socialLinks']);
       return isFullUser && isUpdate;
     }
     function userCreate() {
-      let fullUserFields = ['status', 'meeting', 'bio', 'name', 'imageUrl', 'rating', 'numRatings', 'heartbeatForeground', 'heartbeatBackground', 'tags', 'rule', 'loungeHistory', 'loungeHistoryIndex', 'blocked', 'friends', 'socialLinks'];
+      let fullUserFields = ['url', 'status', 'meeting', 'bio', 'name', 'imageUrl', 'rating', 'numRatings', 'heartbeatForeground', 'heartbeatBackground', 'tags', 'rule', 'loungeHistory', 'loungeHistoryIndex', 'blocked', 'friends', 'socialLinks'];
       let isFullUser = request.resource.data.keys().hasAll(fullUserFields);
       return isFullUser;
     }
@@ -238,7 +238,7 @@ service cloud.firestore {
     // TODO: how to mitigate that?
     match /users/{userId}/ratings/{meetingId} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.keys().toSet() == ['rating', 'comment'].toSet() && isAOrB(get(/databases/$(database)/documents/meetings/$(meetingId)).data);
+      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.keys().toSet() == ['rating', 'comment', 'createdAt'].toSet() && isAOrB(get(/databases/$(database)/documents/meetings/$(meetingId)).data);
     }
 
     /////////////////////////
