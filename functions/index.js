@@ -15,7 +15,12 @@ const algosdk = require("algosdk");
 // algosdk.algosToMicroalgos(1);
 
 const admin = require("firebase-admin");
-admin.initializeApp();
+// admin.initializeApp();
+admin.initializeApp(
+  {
+      "serviceAccountId":"i2i-test@appspot.gserviceaccount.com"
+  }
+);
 const db = admin.firestore();
 // const messaging = admin.messaging();
 const { getAuth } = require("firebase-admin/auth");
@@ -45,6 +50,7 @@ const runWithObj = {
   minInstances: 1, memory: "128MB",
 };
 
+// createToken({token: 'token'})
 exports.createToken = functions.https.onCall(async (data, context) => {
   let id = data.token;
 
