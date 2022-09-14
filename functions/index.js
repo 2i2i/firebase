@@ -1122,6 +1122,19 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 //   }
 // });
 
+// exports.addUrl = functions.https.onCall(async (data, context) => {
+//   const usersColRef = db.collection("users");
+//   const querySnapshot = await usersColRef.get();
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const url = queryDocSnapshot.get("url");
+//     if (url) continue;
+//     console.log(queryDocSnapshot.id);
+//     // console.log(url);
+//     await queryDocSnapshot.ref.update({"url": null});
+//   }
+//   console.log("end");
+// });
+
 // TEST
 
 // test({meetingId: '9IHLdjOw9eHB0QEkpgYB'})
