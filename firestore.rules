@@ -24,6 +24,22 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // collectionGroup for sign in with algorand_accounts
+    match /{path=**}/algorand_accounts/{document} {
+      allow read: if true;
+    }
+    
+    // allow for sign in with instagram - need a better solution
+    // match /users/{document=**} {
+    //   allow read: if true;
+    // }
+    
+    // app version
+    match /system/app_versions {
+      // any logged in user can read
+      allow read : if request.auth != null;
+    }
+
     /////////////////////////
     // general
     function isAOrB(data) {
