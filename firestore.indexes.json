@@ -1,48 +1,44 @@
 {
   "indexes": [
     {
-      "collectionGroup": "users",
-      "queryScope": "COLLECTION",
+      "collectionGroup": "algorand_accounts",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
-          "fieldPath": "status",
+          "fieldPath": "id",
           "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "heartbeat",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "meetings",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "isSettled",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "speed.assetId",
-          "order": "DESCENDING"
-        },
-        {
-          "fieldPath": "duration",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "topDurations",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "duration",
-          "order": "DESCENDING"
         },
         {
           "fieldPath": "ts",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "algorand_accounts",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "id",
           "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "type",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "algorand_accounts",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "type",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "id",
+          "order": "DESCENDING"
         }
       ]
     },
@@ -73,21 +69,39 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "duration",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "meetings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "isSettled",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "speed.assetId",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "speed.num",
           "order": "DESCENDING"
         }
       ]
     },
     {
-      "collectionGroup": "users",
+      "collectionGroup": "topDurations",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "tags",
-          "order": "ARRAYS"
+          "fieldPath": "duration",
+          "order": "DESCENDING"
         },
         {
-          "fieldPath": "status",
+          "fieldPath": "ts",
           "order": "ASCENDING"
         }
       ]
@@ -102,6 +116,62 @@
         },
         {
           "fieldPath": "ts",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "socialLinks",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "heartbeatBackground",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "heartbeatBackground",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "heartbeatForeground",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tags",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
           "order": "ASCENDING"
         }
       ]
