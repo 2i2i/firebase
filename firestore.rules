@@ -36,8 +36,7 @@ service cloud.firestore {
     
     // app version
     match /system/app_versions {
-      // any logged in user can read
-      allow read : if request.auth != null;
+      allow read : if true;
     }
 
     /////////////////////////
