@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:deleteMe
+// firebase deploy --only functions:meetingUpdated,functions:cancelBid
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -445,7 +445,7 @@ const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB)
   const appArgs = [appArg0, appArg1, appArg2, appArg3];
   const suggestedParams = await algodclient.getTransactionParams().do();
   const unlockTxn = algosdk.makeApplicationNoOpTxnFromObject({
-    from: accountCreator.addr,
+    from: '2I2IXTP67KSNJ5FQXHUJP5WZBX2JTFYEBVTBYFF3UUJ3SQKXSZ3QHZNNPY',
     appIndex: Number(process.env.ALGORAND_SYSTEM_ID),
     appArgs,
     accounts: [addrA, addrB],
@@ -1137,7 +1137,12 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 
 // TEST
 
-// test({meetingId: '9IHLdjOw9eHB0QEkpgYB'})
+// test({})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   console.log(process.env.ALGORAND_NET);
+//   energyA = 220000;
+//   energyFee = 7;
+//   energyB = 330000;
+//   addrA = 'I5ZM3Z4O5P56DLZUYFV6RATGFPYCOEYQ22GR5NCRG42ZKLMI4URZP2HDJQ';
+//   addrB = 'VAZ5ONOBATL6RRJZ6675SSCKDKWPBVUOXKCKULAUDI5WOSB2YVGY2HEUUU';
+//   return runUnlock(algorandAlgod, energyA, energyFee, energyB, addrA, addrB);
 // });
