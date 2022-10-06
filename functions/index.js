@@ -308,6 +308,7 @@ exports.meetingCreated = functions.runWith(runWithObj).firestore
       // return Promise.all([p1, p2]);
       return p1;
     });
+
 exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meetings/{meetingId}").onUpdate(async (change, context) => {
   const oldMeeting = change.before.data();
   const newMeeting = change.after.data();
@@ -614,9 +615,9 @@ const sendALGO = async (algodclient, fromAccountAddr, toAccountAddr, signAccount
   }
 };
 
-const sendASA = async (client, fromAccountAddr, toAccountAddr, signAccount, amount, assetIndex, wait = false) => {
+const sendASA = async (algodclient, fromAccountAddr, toAccountAddr, signAccount, amount, assetIndex, wait = false) => {
   // txn
-  const suggestedParams = await client.getTransactionParams().do();
+  const suggestedParams = await algodclient.getTransactionParams().do();
   const transactionOptions = {
     from: fromAccountAddr,
     to: toAccountAddr,
@@ -1185,15 +1186,5 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 // TEST
 
 // test({})
-exports.test = functions.https.onCall(async (data, context) => {
-  const perMeeting = 0.5*0.01*10^(-9)*(2^64-1);
-  const perMeeting2 = 92233720;
-  console.log('perMeeting', perMeeting);
-  console.log('perMeeting2', perMeeting2);
-//   energyA = 220000;
-//   energyFee = 7;
-//   energyB = 330000;
-//   addrA = 'I5ZM3Z4O5P56DLZUYFV6RATGFPYCOEYQ22GR5NCRG42ZKLMI4URZP2HDJQ';
-//   addrB = 'VAZ5ONOBATL6RRJZ6675SSCKDKWPBVUOXKCKULAUDI5WOSB2YVGY2HEUUU';
-//   return runUnlock(algorandAlgod, energyA, energyFee, energyB, addrA, addrB);
-});
+// exports.test = functions.https.onCall(async (data, context) => {
+// });
