@@ -429,6 +429,8 @@ const settleALGOMeeting = async (
 
   const txId = await runUnlock(algodclient, energyA, energyCreator, energyB, meeting.addrA, meeting.addrB);
 
+  try {
+    
   const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   // const partOfEnergy = energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
   const perMeeting = 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
@@ -447,6 +449,7 @@ const settleALGOMeeting = async (
     perMeeting,
     process.env.ASA_ID,
     );
+  } catch (ex) {}
 
   return {
     txId: txId,
