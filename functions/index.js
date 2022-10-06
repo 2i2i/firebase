@@ -579,15 +579,13 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   return Promise.all(ps);
 });
 
-const sendALGO = async (client, fromAccountAddr, toAccountAddr, signAccount, amount) => {
+const sendALGO = async (algodclient, fromAccountAddr, toAccountAddr, signAccount, amount, wait = false) => {
   // txn
-  const suggestedParams = await client.getTransactionParams().do();
-  // const note = new Uint8Array(Buffer.from("a gift from 2i2i", "utf8"));
+  const suggestedParams = await algodclient.getTransactionParams().do();
   const transactionOptions = {
     from: fromAccountAddr,
     to: toAccountAddr,
     amount,
-    note,
     suggestedParams,
   };
   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
@@ -598,12 +596,62 @@ const sendALGO = async (client, fromAccountAddr, toAccountAddr, signAccount, amo
   const signedTxn = txn.signTxn(signAccount.sk);
 
   // send raw
-  const {txId} = await client.sendRawTransaction(signedTxn).do();
-  console.log("txId");
-  console.log(txId);
+  try {
+    const {txId} = await algodclient.sendRawTransaction(signedTxn).do();
+    console.log("txId", txId);
+
+    // confirm
+    if (wait) {
+      const timeout = 5;
+      await waitForConfirmation(algodclient, txId, timeout);
+      console.log("sendALGO, confirmed");
+    }
+
+    return txId;
+  } catch (e) {
+    console.log("error", e);
+    throw Error(e);
+  }
+};
+
+const sendASA = async (client, fromAccountAddr, toAccountAddr, signAccount, amount, assetIndex, wait = false) => {
+  // txn
+  const suggestedParams = await client.getTransactionParams().do();
+  const transactionOptions = {
+    from: fromAccountAddr,
+    to: toAccountAddr,
+    assetIndex,
+    amount,
+    suggestedParams,
+  };
+  const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(
+      transactionOptions,
+  );
+
+  // sign
+  const signedTxn = txn.signTxn(signAccount.sk);
+
+  // send raw
+  try {
+    const {txId} = await algodclient.sendRawTransaction(signedTxn).do();
+    console.log("txId", txId);
+
+    // confirm
+    if (wait) {
+      const timeout = 5;
+      await waitForConfirmation(algodclient, txId, timeout);
+      console.log("sendALGO, confirmed");
+    }
+
+    return txId;
+  } catch (e) {
+    console.log("error", e);
+    throw Error(e);
+  }
 
   return txId;
 };
+
 
 // exports.updateFX = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
 //   const colRef = db.collection("FX");
@@ -879,30 +927,6 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 // const optIn = async (client, account, assetIndex) =>
 //   sendASA(client, account.addr, account.addr, account, 0, assetIndex);
 
-const sendASA = async (client, fromAccountAddr, toAccountAddr, signAccount, amount, assetIndex) => {
-  // txn
-  const suggestedParams = await client.getTransactionParams().do();
-  const transactionOptions = {
-    from: fromAccountAddr,
-    to: toAccountAddr,
-    assetIndex,
-    amount,
-    suggestedParams,
-  };
-  const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(
-      transactionOptions,
-  );
-
-  // sign
-  const signedTxn = txn.signTxn(signAccount.sk);
-
-  // send raw
-  const {txId} = await client.sendRawTransaction(signedTxn).do();
-  console.log("txId");
-  console.log(txId);
-
-  return txId;
-};
 
 // const settleASAMeeting = async (
 //     algodclient,
