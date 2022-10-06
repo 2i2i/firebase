@@ -308,6 +308,7 @@ exports.meetingCreated = functions.runWith(runWithObj).firestore
       // return Promise.all([p1, p2]);
       return p1;
     });
+
 exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meetings/{meetingId}").onUpdate(async (change, context) => {
   const oldMeeting = change.before.data();
   const newMeeting = change.after.data();
@@ -427,6 +428,25 @@ const settleALGOMeeting = async (
 
   const txId = await runUnlock(algodclient, energyA, energyCreator, energyB, meeting.addrA, meeting.addrB);
 
+  const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  // const partOfEnergy = energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
+  const perMeeting = 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
+  console.log('perMeeting', perMeeting);
+  await sendASA(algorandAlgod,
+          process.env.CREATOR_ACCOUNT,
+          meeting.addrA,
+          signAccount,
+          perMeeting,
+          process.env.ASA_ID,
+          );
+  await sendASA(algorandAlgod,
+    process.env.CREATOR_ACCOUNT,
+    meeting.addrB,
+    signAccount,
+    perMeeting,
+    process.env.ASA_ID,
+    );
+
   return {
     txId: txId,
     energyA: energyA,
@@ -445,7 +465,7 @@ const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB)
   const appArgs = [appArg0, appArg1, appArg2, appArg3];
   const suggestedParams = await algodclient.getTransactionParams().do();
   const unlockTxn = algosdk.makeApplicationNoOpTxnFromObject({
-    from: '2I2IXTP67KSNJ5FQXHUJP5WZBX2JTFYEBVTBYFF3UUJ3SQKXSZ3QHZNNPY',
+    from: process.env.CREATOR_ACCOUNT,
     appIndex: Number(process.env.ALGORAND_SYSTEM_ID),
     appArgs,
     accounts: [addrA, addrB],
@@ -560,15 +580,13 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   return Promise.all(ps);
 });
 
-const sendALGO = async (client, fromAccount, toAccount, amount) => {
+const sendALGO = async (algodclient, fromAccountAddr, toAccountAddr, signAccount, amount, wait = false) => {
   // txn
-  const suggestedParams = await client.getTransactionParams().do();
-  const note = new Uint8Array(Buffer.from("a gift from 2i2i", "utf8"));
+  const suggestedParams = await algodclient.getTransactionParams().do();
   const transactionOptions = {
-    from: fromAccount.addr,
-    to: toAccount.addr,
+    from: fromAccountAddr,
+    to: toAccountAddr,
     amount,
-    note,
     suggestedParams,
   };
   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
@@ -576,15 +594,65 @@ const sendALGO = async (client, fromAccount, toAccount, amount) => {
   );
 
   // sign
-  const signedTxn = txn.signTxn(fromAccount.sk);
+  const signedTxn = txn.signTxn(signAccount.sk);
 
   // send raw
-  const {txId} = await client.sendRawTransaction(signedTxn).do();
-  console.log("txId");
-  console.log(txId);
+  try {
+    const {txId} = await algodclient.sendRawTransaction(signedTxn).do();
+    console.log("txId", txId);
+
+    // confirm
+    if (wait) {
+      const timeout = 5;
+      await waitForConfirmation(algodclient, txId, timeout);
+      console.log("sendALGO, confirmed");
+    }
+
+    return txId;
+  } catch (e) {
+    console.log("error", e);
+    throw Error(e);
+  }
+};
+
+const sendASA = async (algodclient, fromAccountAddr, toAccountAddr, signAccount, amount, assetIndex, wait = false) => {
+  // txn
+  const suggestedParams = await algodclient.getTransactionParams().do();
+  const transactionOptions = {
+    from: fromAccountAddr,
+    to: toAccountAddr,
+    assetIndex,
+    amount,
+    suggestedParams,
+  };
+  const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(
+      transactionOptions,
+  );
+
+  // sign
+  const signedTxn = txn.signTxn(signAccount.sk);
+
+  // send raw
+  try {
+    const {txId} = await algodclient.sendRawTransaction(signedTxn).do();
+    console.log("txId", txId);
+
+    // confirm
+    if (wait) {
+      const timeout = 5;
+      await waitForConfirmation(algodclient, txId, timeout);
+      console.log("sendALGO, confirmed");
+    }
+
+    return txId;
+  } catch (e) {
+    console.log("error", e);
+    throw Error(e);
+  }
 
   return txId;
 };
+
 
 // exports.updateFX = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
 //   const colRef = db.collection("FX");
@@ -650,8 +718,9 @@ const sendALGO = async (client, fromAccount, toAccount, amount) => {
 //   console.log("data.account", data.account);
 
 //   return sendALGO(algorandAlgod,
+//       creatorAccount.addr,
+//       userAccount.addr,
 //       creatorAccount,
-//       userAccount,
 //       500000);
 // });
 
@@ -663,8 +732,9 @@ const sendALGO = async (client, fromAccount, toAccount, amount) => {
 //   console.log("data.account", data.account);
 
 //   return sendASA(clientTESTNET,
+//       creatorAccount.addr,
+//       userAccount.addr,
 //       creatorAccount,
-//       userAccount,
 //       1000,
 //       NOVALUE_ASSET_ID);
 // });
@@ -796,6 +866,8 @@ const deleteMeInternal = (uid) => {
 
   return Promise.all(p);
 }
+// deleteMe({})
+// exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInternal('0G0vv08yfbR5ZRPbaUA4UaQFGXk2'));
 exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInternal(context.auth.uid));
 
 // //////////////
@@ -854,32 +926,8 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 // OLD
 
 // const optIn = async (client, account, assetIndex) =>
-//   sendASA(client, account, account, 0, assetIndex);
+//   sendASA(client, account.addr, account.addr, account, 0, assetIndex);
 
-// const sendASA = async (client, fromAccount, toAccount, amount, assetIndex) => {
-//   // txn
-//   const suggestedParams = await client.getTransactionParams().do();
-//   const transactionOptions = {
-//     from: fromAccount.addr,
-//     to: toAccount.addr,
-//     assetIndex,
-//     amount,
-//     suggestedParams,
-//   };
-//   const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(
-//       transactionOptions,
-//   );
-
-//   // sign
-//   const signedTxn = txn.signTxn(fromAccount.sk);
-
-//   // send raw
-//   const {txId} = await client.sendRawTransaction(signedTxn).do();
-//   console.log("txId");
-//   console.log(txId);
-
-//   return txId;
-// };
 
 // const settleASAMeeting = async (
 //     algodclient,
@@ -1139,10 +1187,4 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 
 // test({})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   energyA = 220000;
-//   energyFee = 7;
-//   energyB = 330000;
-//   addrA = 'I5ZM3Z4O5P56DLZUYFV6RATGFPYCOEYQ22GR5NCRG42ZKLMI4URZP2HDJQ';
-//   addrB = 'VAZ5ONOBATL6RRJZ6675SSCKDKWPBVUOXKCKULAUDI5WOSB2YVGY2HEUUU';
-//   return runUnlock(algorandAlgod, energyA, energyFee, energyB, addrA, addrB);
 // });
