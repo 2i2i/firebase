@@ -330,7 +330,7 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
     return change.after.ref.update({
       start: start,
       status: "CALL_STARTED",
-      statusHistory: admin.firestore.FieldValue.arrayUnion({
+      statusHistory: FieldValue.arrayUnion({
         value: "CALL_STARTED",
         ts: start,
       }),
@@ -493,14 +493,14 @@ const send2i2iCoins = async (meeting) => {
           meeting.addrA,
           signAccount,
           perMeeting,
-          process.env.ASA_ID,
+          process.env.ASA_ID*1,
           );
   await sendASA(algorandAlgod,
     process.env.CREATOR_ACCOUNT,
     meeting.addrB,
     signAccount,
     perMeeting,
-    process.env.ASA_ID,
+    process.env.ASA_ID*1,
     );
 }
 
@@ -550,7 +550,7 @@ const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = 
 const disconnectMeeting = async (meetingId, A, B) => {
   const meetingObj = {
     status: "END_DISCONNECT",
-    statusHistory: admin.firestore.FieldValue.arrayUnion({value: "END_DISCONNECT", ts: admin.firestore.Timestamp.now()}),
+    statusHistory: FieldValue.arrayUnion({value: "END_DISCONNECT", ts: admin.firestore.Timestamp.now()}),
     active: false,
     end: FieldValue.serverTimestamp(),
   };
@@ -1131,7 +1131,7 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 //     const heartbeat = queryDocSnapshot.get("heartbeat");
 //     // console.log('heartbeat', heartbeat);
 //     if (!heartbeat) continue;
-//     const p = queryDocSnapshot.ref.update({"heartbeat": admin.firestore.FieldValue.delete(), "heartbeatForeground": heartbeat, "heartbeatBackground": heartbeat});
+//     const p = queryDocSnapshot.ref.update({"heartbeat": FieldValue.delete(), "heartbeatForeground": heartbeat, "heartbeatBackground": heartbeat});
 //     ps.push(p);
 //   }
 //   return Promise.all(ps);
@@ -1201,7 +1201,7 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 //     const heartbeat = queryDocSnapshot.get("heartbeat");
 //     // console.log('heartbeat', heartbeat);
 //     if (!heartbeat) continue;
-//     const p = queryDocSnapshot.ref.update({"heartbeat": admin.firestore.FieldValue.delete(), "heartbeatForeground": heartbeat, "heartbeatBackground": heartbeat});
+//     const p = queryDocSnapshot.ref.update({"heartbeat": FieldValue.delete(), "heartbeatForeground": heartbeat, "heartbeatBackground": heartbeat});
 //     ps.push(p);
 //   }
 //   return Promise.all(ps);
