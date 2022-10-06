@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:meetingUpdated
+// firebase deploy --only functions:meetingUpdated,functions:cancelBid
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -436,7 +436,8 @@ const settleALGOMeeting = async (
 };
 
 const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB) => {
-  const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  // const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  const accountCreator = algosdk.mnemonicToSecretKey('borrow collect only shy theme solid bullet country diet garlic accident achieve luxury bright crazy genre bundle exist treat domain bright hill fat absent author');
   console.log("accountCreator.addr", accountCreator.addr);
   const appArg0 = new TextEncoder().encode("UNLOCK");
   const appArg1 = algosdk.encodeUint64(energyA);
@@ -1139,10 +1140,10 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 
 // test({})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   energyA = 11;
-//   energyFee = 3;
-//   energyB = 27;
-//   addrA = 'ALY3RE2FTSTQTD7DF3ITV7UGYSNQ47V2FMREGT3EOWHFJFEWT6I5WX2I24';
-//   addrB = 'C7WEF5P2SWYAO3IPWHKMN2DB7BWK4DKCCERVWED27KKVBRQVIAPDHGQWTM';
+//   energyA = 220000;
+//   energyFee = 7;
+//   energyB = 330000;
+//   addrA = 'I5ZM3Z4O5P56DLZUYFV6RATGFPYCOEYQ22GR5NCRG42ZKLMI4URZP2HDJQ';
+//   addrB = 'VAZ5ONOBATL6RRJZ6675SSCKDKWPBVUOXKCKULAUDI5WOSB2YVGY2HEUUU';
 //   return runUnlock(algorandAlgod, energyA, energyFee, energyB, addrA, addrB);
 // });
