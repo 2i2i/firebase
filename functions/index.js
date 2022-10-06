@@ -436,8 +436,7 @@ const settleALGOMeeting = async (
 };
 
 const runUnlock = async (algodclient, energyA, energyFee, energyB, addrA, addrB) => {
-  // const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
-  const accountCreator = algosdk.mnemonicToSecretKey('borrow collect only shy theme solid bullet country diet garlic accident achieve luxury bright crazy genre bundle exist treat domain bright hill fat absent author');
+  const accountCreator = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log("accountCreator.addr", accountCreator.addr);
   const appArg0 = new TextEncoder().encode("UNLOCK");
   const appArg1 = algosdk.encodeUint64(energyA);
