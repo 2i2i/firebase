@@ -796,6 +796,8 @@ const deleteMeInternal = (uid) => {
 
   return Promise.all(p);
 }
+// deleteMe({})
+// exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInternal('0G0vv08yfbR5ZRPbaUA4UaQFGXk2'));
 exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInternal(context.auth.uid));
 
 // //////////////
