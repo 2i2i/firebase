@@ -201,7 +201,7 @@ service cloud.firestore {
              request.resource.data.status == 'END_DISCONNECT';
     }
     function hasCorrectFieldsForEnd() {
-      return request.resource.data.diff(resource.data).affectedKeys() == ['status', 'statusHistory', 'active', 'end'].toSet();
+      return request.resource.data.diff(resource.data).affectedKeys() == ['status', 'statusHistory', 'active'].toSet();
     }
     function isEnd() {
       return !alreadyEnded() && isEndReason() && isCorrectEndPath() && hasCorrectFieldsForEnd();

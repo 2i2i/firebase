@@ -321,24 +321,40 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
   if ((newMeeting.status === "RECEIVED_REMOTE_A" && oldMeeting.status == "RECEIVED_REMOTE_B") ||
            newMeeting.status === "RECEIVED_REMOTE_B" && oldMeeting.status == "RECEIVED_REMOTE_A") {
     // start: earlier of RECEIVED_REMOTE_A/B
-    let start = FieldValue.serverTimestamp();
+    const start = FieldValue.serverTimestamp();
+    let statusHistoryTS = null;
     for (const s of newMeeting.statusHistory) {
-      if (s.value === "RECEIVED_REMOTE_A" || s.value === "RECEIVED_REMOTE_B") start = s.ts;
+      if (s.value === "RECEIVED_REMOTE_A" || s.value === "RECEIVED_REMOTE_B") statusHistoryTS = s.ts;
     }
-    console.log("meetingUpdated, start", start);
+    // console.log("meetingUpdated, start", start);
 
     return change.after.ref.update({
       start: start,
       status: "CALL_STARTED",
       statusHistory: FieldValue.arrayUnion({
         value: "CALL_STARTED",
-        ts: start,
+        ts: statusHistoryTS, // start,
       }),
     });
   }
 
   // is meeting done?
   if (!newMeeting.status.startsWith("END_")) return 0;
+
+  const promises = [];
+
+  if (newMeeting.status === "END_END") {
+    newMeeting.duration = newMeeting.start !== null ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
+  // console.log("meetingUpdated, newMeeting.duration", newMeeting.start, newMeeting.end.seconds, newMeeting.start.seconds, newMeeting.duration);
+
+    return settleMeeting(change.after.ref, newMeeting);
+  }
+
+  const updateEndPromise = change.after.ref.update({
+    end: FieldValue.serverTimestamp(),
+    status: "END_END",
+  });
+  promises.push(updateEndPromise);
 
   // unlock users
   if (newMeeting.status === "END_DISCONNECT") {
@@ -349,14 +365,11 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
     const docRefB = colRef.doc(B);
     const unlockAPromise = docRefA.update({meeting: null});
     const unlockBPromise = docRefB.update({meeting: null});
-    await Promise.all([unlockAPromise, unlockBPromise]);
+    promises.push(unlockAPromise, unlockBPromise);
     console.log("meetingUpdated, users unlocked");
   }
 
-  newMeeting.duration = newMeeting.start !== null ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
-  // console.log("meetingUpdated, newMeeting.duration", newMeeting.start, newMeeting.end.seconds, newMeeting.start.seconds, newMeeting.duration);
-
-  return settleMeeting(change.after.ref, newMeeting);
+  return Promise.all(promises);
 });
 
 const settleMeeting = async (docRef, meeting) => {
