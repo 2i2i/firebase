@@ -340,6 +340,21 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
   // is meeting done?
   if (!newMeeting.status.startsWith("END_")) return 0;
 
+  const promises = [];
+
+  if (newMeeting.status === "END_END") {
+    newMeeting.duration = newMeeting.start !== null ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
+  // console.log("meetingUpdated, newMeeting.duration", newMeeting.start, newMeeting.end.seconds, newMeeting.start.seconds, newMeeting.duration);
+
+  return settleMeeting(change.after.ref, newMeeting);
+  }
+
+  const updateEndPromise = change.after.ref.update({
+    end: FieldValue.serverTimestamp(),
+    status: "END_END",
+  });
+  promises.push(updateEndPromise);
+
   // unlock users
   if (newMeeting.status === "END_DISCONNECT") {
     const colRef = db.collection("users");
@@ -349,14 +364,11 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
     const docRefB = colRef.doc(B);
     const unlockAPromise = docRefA.update({meeting: null});
     const unlockBPromise = docRefB.update({meeting: null});
-    await Promise.all([unlockAPromise, unlockBPromise]);
+    promises.push(unlockAPromise, unlockBPromise);
     console.log("meetingUpdated, users unlocked");
   }
 
-  newMeeting.duration = newMeeting.start !== null ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
-  // console.log("meetingUpdated, newMeeting.duration", newMeeting.start, newMeeting.end.seconds, newMeeting.start.seconds, newMeeting.duration);
-
-  return settleMeeting(change.after.ref, newMeeting);
+  return Promise.all(promises);
 });
 
 const settleMeeting = async (docRef, meeting) => {
