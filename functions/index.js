@@ -521,7 +521,7 @@ const send2i2iCoinsCore = async (amount, toAddr, uid) => {
     return docRef.update({
       // FieldValue.increment(): works if key does not exist yet:
       // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
-      assetId: FieldValue.increment(amount),
+      [assetId]: FieldValue.increment(amount),
     });
   }
 }
@@ -1263,7 +1263,8 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 // exports.test = functions.https.onCall(async (data, context) => {
 //   // console.log(FieldValue.serverTimestamp);
 //   const docRef = db.collection("test").doc("a");
+//   const a = 4*4;
 //   return docRef.update({
-//     a: FieldValue.serverTimestamp()
+//     [a]: FieldValue.serverTimestamp()
 //   });
 // });
