@@ -403,13 +403,37 @@ const settleMeeting = async (docRef, meeting) => {
   const p1 = updateTopSpeeds(meeting);
   const p2 = updateTopDurations(meeting);
 
-  const p3 = updateRedeem(result.txId, meeting);
+  const p3 = updateRedeemBoth(meeting);
 
   return Promise.all([p1, p2, p3]);
 };
 
-const updateRedeem = async(txId, meeting) => {
+const updateRedeemBoth = async (meeting) => {
+  const txInfo = await algorandIndexer.lookupTransactionByID(meeting.txns.unlock).do();
+  const p1 = updateRedeem(txInfo, meeting.B, meeting.speed.assetId, meeting.addrB, meeting.energy.B);
+  const p2 = updateRedeem(txInfo, meeting.A, meeting.speed.assetId, meeting.addrA, meeting.energy.A);
+  return Promise.all([p1, p2]);
+}
+const updateRedeem = async(txInfo, uid, targetAlgorand, assetId, amount) => {
+  // const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
   
+  // console.log('txInfo', txInfo);
+  // console.log('1', txInfo.transaction['inner-txns']);
+  let redeem = true;
+  for (const t of txInfo.transaction['inner-txns']) {
+    const receiver = t['payment-transaction']?.receiver ?? t['asset-transfer-transaction']?.receiver;
+    console.log('receiver', receiver);
+    // console.log('2', t['payment-transaction']);
+    // console.log('3', t['asset-transfer-transaction']);
+    // receiver, amount
+    if (receiver === targetAlgorand) {
+      redeem = false;
+    }
+  }
+
+  if (!redeem) return;
+
+  return addRedeem(uid, assetId, amount);
 }
 
 const settleALGOMeeting = async (
@@ -524,13 +548,17 @@ const send2i2iCoinsCore = async (amount, toAddr, uid) => {
           assetId,
           );
   } catch(e) {
-    const docRef = db.collection("redeem").doc(uid);
+    return addRedeem(uid, assetId, amount);
+  }
+}
+
+const addRedeem = (uid, assetId, amount) => {
+  const docRef = db.collection("redeem").doc(uid);
     return docRef.update({
       // FieldValue.increment(): works if key does not exist yet:
       // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
       [assetId]: FieldValue.increment(amount),
     });
-  }
 }
 
 const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = null) => {
@@ -1267,11 +1295,14 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 // TEST
 
 // test({})
-// exports.test = functions.https.onCall(async (data, context) => {
-//   // console.log(FieldValue.serverTimestamp);
-//   const docRef = db.collection("test").doc("a");
-//   const a = 4*4;
-//   return docRef.update({
-//     [a]: FieldValue.serverTimestamp()
-//   });
-// });
+exports.test = functions.https.onCall(async (data, context) => {
+  const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
+  const txInfo = await algorandIndexer.lookupTransactionByID(txId).do();
+  console.log('txInfo', txInfo);
+  console.log('1', txInfo.transaction['inner-txns']);
+  for (const t of txInfo.transaction['inner-txns']) {
+    console.log('2', t['payment-transaction']);
+    console.log('3', t['asset-transfer-transaction']);
+    // receiver, amount
+  }
+});
