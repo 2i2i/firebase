@@ -436,27 +436,11 @@ const updateRedeem = async(txInfo, uid, targetAlgorand, assetId, amount) => {
   return addRedeem(uid, assetId, amount);
 }
 
-const settleALGOMeeting = async (
-    algodclient,
-    id,
-    meeting,
+const settleMeetingCalcEnergy = (
+  amount,
+  meeting
 ) => {
-  const note = Buffer.from(id + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
-  console.log("note", note);
-  const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
-  console.log("lookup.transactions.length", lookup.transactions.length);
-
-  if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
-  const txn = lookup.transactions[0];
-  const sender = txn.sender;
-  console.log("sender", sender, meeting.A, sender === meeting.addrA);
-  if (sender !== meeting.addrA) return; // pay back to same account only
-  const paymentTxn = txn["payment-transaction"];
-  const receiver = paymentTxn.receiver;
-  console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
-  if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return;
-
-  const maxEnergy = paymentTxn.amount - 3 * MIN_TXN_FEE;
+  const maxEnergy = amount - 3 * MIN_TXN_FEE;
   console.log("maxEnergy", maxEnergy);
   if (maxEnergy !== meeting.energy.MAX) console.error("maxEnergy !== meeting.energy.MAX", maxEnergy, meeting.energy.MAX);
 
@@ -471,51 +455,58 @@ const settleALGOMeeting = async (
   const energyA = maxEnergy - energyB - energyCreator + (energyB === 0 ? MIN_TXN_FEE : 0) + (energyCreator === 0 ? MIN_TXN_FEE : 0);
   console.log("energyA", energyA);
 
+  return {
+    energyA,
+    energyCreator,
+    energyB,
+  };
+}
+
+const settleALGOMeeting = async (
+    algodclient,
+    id,
+    meeting,
+) => {
+  await settleMeetingCheckTxn(meetingId, meeting, "pay");
+
+  const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(paymentTxn.amount, meeting);
+
   const txId = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB);
 
   return {
-    txId: txId,
-    energyA: energyA,
-    energyCreator: energyCreator,
-    energyB: energyB,
+    txId,
+    energyA,
+    energyCreator,
+    energyB,
   };
 };
 
+const settleMeetingCheckTxn = async (meetingId, meeting, txnType) => {
+  const note = Buffer.from(meetingId + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
+  console.log("note", note);
+  const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType(txnType).assetID(meeting.speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
+  console.log("lookup.transactions.length", lookup.transactions.length);
+
+  if (lookup.transactions.length !== 1) throw("lookup.transactions.length !== 1"); // there should exactly one lock txn for this bid
+  const txn = lookup.transactions[0];
+  const sender = txn.sender;
+  console.log("sender", sender, meeting.A, sender === meeting.addrA);
+  if (sender !== meeting.addrA) throw("sender !== meeting.addrA"); // pay back to same account only
+  console.log("txn", txn);
+  const receiver = meeting.speed.assetId == 0 ? txn["payment-transaction"]?.receiver : txn["asset-transfer-transaction"].receiver;
+  console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
+  if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) throw("receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT");
+}
+
 const settleASAMeeting = async (
   algodclient,
-  id,
+  meetingId,
   meeting,
 ) => {
-const note = Buffer.from(id + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
-console.log("note", note);
-const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType("axfer").assetID(meeting.speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
-console.log("lookup.transactions.length", lookup.transactions.length);
 
-if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
-const txn = lookup.transactions[0];
-const sender = txn.sender;
-console.log("sender", sender, meeting.A, sender === meeting.addrA);
-if (sender !== meeting.addrA) return; // pay back to same account only
-console.log("txn", txn);
-const axferTxn = txn["asset-transfer-transaction"]; // ?
-const receiver = axferTxn.receiver; // ?
-console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
-if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return;
+await settleMeetingCheckTxn(meetingId, meeting, "axfer");
 
-const maxEnergy = axferTxn.amount - 4 * MIN_TXN_FEE; // ?
-console.log("maxEnergy", maxEnergy);
-if (maxEnergy !== meeting.energy.MAX) console.error("maxEnergy !== meeting.energy.MAX", maxEnergy, meeting.energy.MAX);
-
-let energy = maxEnergy;
-if (meeting.status !== "END_TIMER_CALL_PAGE") energy = Math.min(meeting.duration * meeting.speed.num, energy);
-console.log("energy", energy);
-
-const energyB = Math.ceil(0.9 * energy);
-console.log("energyB", energyB);
-const energyCreator = energy - energyB;
-console.log("energyCreator", energyCreator);
-const energyA = maxEnergy - energyB - energyCreator + (energyB === 0 ? MIN_TXN_FEE : 0) + (energyCreator === 0 ? MIN_TXN_FEE : 0);
-console.log("energyA", energyA);
+const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(axferTxn.amount, meeting);
 
 const txId = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB, meeting.speed.assetId);
 
@@ -560,6 +551,24 @@ const addRedeem = (uid, assetId, amount) => {
       [assetId]: FieldValue.increment(amount),
     });
 }
+
+exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  const uid = context.auth.uid;
+  const assetId = data.assetId;
+  const addr = data.addr;
+  
+
+
+  // read db
+
+  
+  // send coins
+
+
+  // update db
+
+
+});
 
 const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = null) => {
   console.log("runUnlock", energyA, energyB, addrA, addrB, assetId);
