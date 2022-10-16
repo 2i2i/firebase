@@ -402,8 +402,15 @@ const settleMeeting = async (docRef, meeting) => {
 
   const p1 = updateTopSpeeds(meeting);
   const p2 = updateTopDurations(meeting);
-  return Promise.all([p1, p2]);
+
+  const p3 = updateRedeem(result.txId, meeting);
+
+  return Promise.all([p1, p2, p3]);
 };
+
+const updateRedeem = async(txId, meeting) => {
+  
+}
 
 const settleALGOMeeting = async (
     algodclient,
