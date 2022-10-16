@@ -498,27 +498,32 @@ return {
 
 const send2i2iCoins = async (meeting) => {
   const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
-  // const partOfEnergy = energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
+  const partOfEnergy = 0; // energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
   const perMeeting = 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
-  console.log('perMeeting', perMeeting);
+  const amount = perMeeting + partOfEnergy;
+  const aFuture = send2i2iCoinsCore(amount, meeting.addrA, meeting.A);
+  const bFuture = send2i2iCoinsCore(amount, meeting.addrB, meeting.B);
+  return Promise.all([aFuture, bFuture]);
+}
+const send2i2iCoinsCore = async (amount, toAddr, uid) => {
+  const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  const assetId = process.env.ASA_ID*1;
   try {
-  await sendASA(algorandAlgod,
+  return sendASA(algorandAlgod,
           process.env.CREATOR_ACCOUNT,
-          meeting.addrA,
+          toAddr,
           signAccount,
-          perMeeting,
-          process.env.ASA_ID*1,
+          amount,
+          assetId,
           );
-        } catch(e){}
-        try{
-  await sendASA(algorandAlgod,
-    process.env.CREATOR_ACCOUNT,
-    meeting.addrB,
-    signAccount,
-    perMeeting,
-    process.env.ASA_ID*1,
-    );
-  } catch(e){}
+  } catch(e) {
+    const docRef = db.collection("redeem").doc(uid);
+    return docRef.update({
+      // FieldValue.increment(): works if key does not exist yet:
+      // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
+      assetId: FieldValue.increment(amount),
+    });
+  }
 }
 
 const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = null) => {
