@@ -421,7 +421,7 @@ const updateRedeem = async(txInfo, uid, targetAlgorand, assetId, amount) => {
   // console.log('1', txInfo.transaction['inner-txns']);
   let redeem = true;
   for (const t of txInfo.transaction['inner-txns']) {
-    const receiver = t['payment-transaction']?.receiver ?? t['asset-transfer-transaction']?.receiver;
+    const receiver = assetId == 0 ? t['payment-transaction']?.receiver : t['asset-transfer-transaction']?.receiver;
     console.log('receiver', receiver);
     // console.log('2', t['payment-transaction']);
     // console.log('3', t['asset-transfer-transaction']);
@@ -556,19 +556,66 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
   const uid = context.auth.uid;
   const assetId = data.assetId;
   const addr = data.addr;
-  
 
-
-  // read db
-
-  
-  // send coins
-
-
-  // update db
-
-
+  return db.runTransaction(async (T) => {
+    // read db
+    const docRef = db.collection("redeem").doc(uid);
+    const doc = await T.get(docRef);
+    const amount = doc.get(assetId);
+    
+    // send coins
+    await runRedeem(algorandAlgod, amount, addr, assetId);
+    
+    // update db
+    return docRef.update({
+      // FieldValue.increment(): works if key does not exist yet:
+      // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
+      [assetId]: FieldValue.increment(-amount),
+    });
+    
+  });
 });
+
+const runRedeem = async (algodclient, amount, addr, assetId) => {
+  console.log("runRedeem", amount, addr, assetId);
+  const signerAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  console.log("signerAccount.addr", signerAccount.addr);
+  const appArg0 = new TextEncoder().encode("REDEEM");
+  const appArg1 = algosdk.encodeUint64(amount);
+  const appArgs = [appArg0, appArg1];
+  const suggestedParams = await algodclient.getTransactionParams().do();
+  const txnObj = {
+    from: process.env.CREATOR_ACCOUNT,
+    appIndex: Number(process.env.ALGORAND_SYSTEM_ID),
+    appArgs,
+    accounts: [addr],
+    suggestedParams,
+  }
+  if (assetId !== 0) txnObj.foreignAssets = [assetId];
+
+  const txn = algosdk.makeApplicationNoOpTxnFromObject(txnObj);
+  console.log("runRedeem, txn");
+
+  // sign
+  const stateTxnSigned = txn.signTxn(signerAccount.sk);
+  console.log("runRedeem, signed");
+
+  // send
+  try {
+    const {txId} = await algodclient.sendRawTransaction([stateTxnSigned]).do();
+    console.log("runRedeem, sent", txId);
+
+    // confirm
+    const timeout = 5;
+    await waitForConfirmation(algodclient, txId, timeout);
+    console.log("runRedeem, confirmed");
+
+    return txId;
+  } catch (e) {
+    console.log("error", e);
+    throw Error(e);
+  }
+};
 
 const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = null) => {
   console.log("runUnlock", energyA, energyB, addrA, addrB, assetId);
