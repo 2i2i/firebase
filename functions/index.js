@@ -488,7 +488,7 @@ const settleASAMeeting = async (
 ) => {
 const note = Buffer.from(id + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
 console.log("note", note);
-const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
+const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType("axfer").assetID(meeting.speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
 console.log("lookup.transactions.length", lookup.transactions.length);
 
 if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
