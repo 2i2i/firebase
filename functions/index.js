@@ -497,12 +497,12 @@ const sender = txn.sender;
 console.log("sender", sender, meeting.A, sender === meeting.addrA);
 if (sender !== meeting.addrA) return; // pay back to same account only
 console.log("txn", txn);
-const paymentTxn = txn["payment-transaction"]; // ?
-const receiver = paymentTxn.receiver; // ?
+const axferTxn = txn["asset-transfer-transaction"]; // ?
+const receiver = axferTxn.receiver; // ?
 console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
 if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return;
 
-const maxEnergy = paymentTxn.amount - 4 * MIN_TXN_FEE; // ?
+const maxEnergy = axferTxn.amount - 4 * MIN_TXN_FEE; // ?
 console.log("maxEnergy", maxEnergy);
 if (maxEnergy !== meeting.energy.MAX) console.error("maxEnergy !== meeting.energy.MAX", maxEnergy, meeting.energy.MAX);
 
