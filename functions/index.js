@@ -1392,14 +1392,14 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 // TEST
 
 // test({})
-exports.test = functions.https.onCall(async (data, context) => {
-  const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
-  const txInfo = await algorandIndexer.lookupTransactionByID(txId).do();
-  console.log('txInfo', txInfo);
-  console.log('1', txInfo.transaction['inner-txns']);
-  for (const t of txInfo.transaction['inner-txns']) {
-    console.log('2', t['payment-transaction']);
-    console.log('3', t['asset-transfer-transaction']);
-    // receiver, amount
-  }
-});
+// exports.test = functions.https.onCall(async (data, context) => {
+//   const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
+//   const txInfo = await algorandIndexer.lookupTransactionByID(txId).do();
+//   console.log('txInfo', txInfo);
+//   console.log('1', txInfo.transaction['inner-txns']);
+//   for (const t of txInfo.transaction['inner-txns']) {
+//     console.log('2', t['payment-transaction']);
+//     console.log('3', t['asset-transfer-transaction']);
+//     // receiver, amount
+//   }
+// });
