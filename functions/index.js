@@ -127,7 +127,8 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return; // CAREFUL - if we ever change this, cancel would fail
 
     const energyA = paymentTxn.amount - 2 * MIN_TXN_FEE; // keep 2 fees
-    const txId = await runUnlock(algorandAlgod, energyA, 0, addrA, addrA, speed.assetId);
+    const {txId, error} = await runUnlock(algorandAlgod, energyA, 0, addrA, addrA, speed.assetId);
+    if (error) return error;
 
     const B = docBidOut.get("B");
     console.log("B", B);
@@ -382,7 +383,8 @@ const settleMeeting = async (docRef, meeting) => {
     } else {
       result = await settleASAMeeting(algorandAlgod, docRef.id, meeting);
     }
-    await send2i2iCoins(meeting);
+
+    if (!result.error) await send2i2iCoins(meeting);
   }
 
   console.log("settleMeeting, result", result);
@@ -409,6 +411,7 @@ const settleMeeting = async (docRef, meeting) => {
 };
 
 const updateRedeemBoth = async (meeting) => {
+  if (!meeting.txns.unlock) return;
   const txInfo = await algorandIndexer.lookupTransactionByID(meeting.txns.unlock).do();
   const p1 = updateRedeem(txInfo, meeting.B, meeting.speed.assetId, meeting.addrB, meeting.energy.B);
   const p2 = updateRedeem(txInfo, meeting.A, meeting.speed.assetId, meeting.addrA, meeting.energy.A);
@@ -417,11 +420,12 @@ const updateRedeemBoth = async (meeting) => {
 const updateRedeem = async(txInfo, uid, targetAlgorand, assetId, amount) => {
   // const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
   
-  // console.log('txInfo', txInfo);
-  // console.log('1', txInfo.transaction['inner-txns']);
+  console.log('txInfo', txInfo);
+  console.log('1', txInfo.transaction['inner-txns']);
+
   let redeem = true;
-  for (const t of txInfo.transaction['inner-txns']) {
-    const receiver = assetId == 0 ? t['payment-transaction']?.receiver : t['asset-transfer-transaction']?.receiver;
+  for (const t of txInfo.transaction['inner-txns'] ?? []) {
+    const receiver = assetId == 0 ? t['payment-transaction'].receiver : t['asset-transfer-transaction'].receiver;
     console.log('receiver', receiver);
     // console.log('2', t['payment-transaction']);
     // console.log('3', t['asset-transfer-transaction']);
@@ -464,20 +468,21 @@ const settleMeetingCalcEnergy = (
 
 const settleALGOMeeting = async (
     algodclient,
-    id,
+    meetingId,
     meeting,
 ) => {
-  await settleMeetingCheckTxn(meetingId, meeting, "pay");
+  const paymentTxn = await settleMeetingCheckTxn(meetingId, meeting, "pay");
 
   const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(paymentTxn.amount, meeting);
 
-  const txId = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB);
+  const {txId, error} = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB);
 
   return {
     txId,
     energyA,
     energyCreator,
     energyB,
+    error,
   };
 };
 
@@ -493,9 +498,12 @@ const settleMeetingCheckTxn = async (meetingId, meeting, txnType) => {
   console.log("sender", sender, meeting.A, sender === meeting.addrA);
   if (sender !== meeting.addrA) throw("sender !== meeting.addrA"); // pay back to same account only
   console.log("txn", txn);
-  const receiver = meeting.speed.assetId == 0 ? txn["payment-transaction"]?.receiver : txn["asset-transfer-transaction"].receiver;
+  const innerTxn = meeting.speed.assetId == 0 ? txn["payment-transaction"] : txn["asset-transfer-transaction"];
+  const receiver = innerTxn.receiver;
   console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
   if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) throw("receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT");
+
+  return innerTxn;
 }
 
 const settleASAMeeting = async (
@@ -503,19 +511,19 @@ const settleASAMeeting = async (
   meetingId,
   meeting,
 ) => {
+  const axferTxn = await settleMeetingCheckTxn(meetingId, meeting, "axfer");
 
-await settleMeetingCheckTxn(meetingId, meeting, "axfer");
+  const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(axferTxn.amount, meeting);
 
-const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(axferTxn.amount, meeting);
+  const {txId, error} = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB, meeting.speed.assetId);
 
-const txId = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB, meeting.speed.assetId);
-
-return {
-  txId: txId,
-  energyA: energyA,
-  energyCreator: energyCreator,
-  energyB: energyB,
-};
+  return {
+    txId,
+    energyA,
+    energyCreator,
+    energyB,
+    error,
+  };
 };
 
 const send2i2iCoins = async (meeting) => {
@@ -525,25 +533,30 @@ const send2i2iCoins = async (meeting) => {
   const amount = perMeeting + partOfEnergy;
   const aFuture = send2i2iCoinsCore(amount, meeting.addrA, meeting.A);
   const bFuture = send2i2iCoinsCore(amount, meeting.addrB, meeting.B);
-  return Promise.all([aFuture, bFuture]);
+  return Promise.all([aFuture, bFuture]).catch(() => console.error("Oh no, an error occurred!"));
 }
 const send2i2iCoinsCore = async (amount, toAddr, uid) => {
+  console.log('send2i2iCoinsCore, amount, toAddr, uid', amount, toAddr, uid);
   const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   const assetId = process.env.ASA_ID*1;
-  try {
-  return sendASA(algorandAlgod,
+
+    console.log('send2i2iCoinsCore before sendASA, assetId', assetId);
+    const {txId, error} = await sendASA(algorandAlgod,
           process.env.CREATOR_ACCOUNT,
           toAddr,
           signAccount,
           amount,
           assetId,
           );
-  } catch(e) {
-    return addRedeem(uid, assetId, amount);
-  }
+
+    if (error) {
+      console.log('send2i2iCoinsCore before addRedeem');
+      return addRedeem(uid, assetId, amount);
+    }
 }
 
 const addRedeem = (uid, assetId, amount) => {
+  console.log('addRedeem, uid, assetId, amount', uid, assetId, amount);
   const docRef = db.collection("redeem").doc(uid);
     return docRef.update({
       // FieldValue.increment(): works if key does not exist yet:
@@ -564,15 +577,17 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
     const amount = doc.get(assetId);
     
     // send coins
-    await runRedeem(algorandAlgod, amount, addr, assetId);
-    
+    const {txId, error}  = await runRedeem(algorandAlgod, amount, addr, assetId);
+    if (error) return `${error}`;
+
     // update db
-    return docRef.update({
+    await docRef.update({
       // FieldValue.increment(): works if key does not exist yet:
       // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
       [assetId]: FieldValue.increment(-amount),
     });
-    
+
+    return txId;
   });
 });
 
@@ -610,10 +625,16 @@ const runRedeem = async (algodclient, amount, addr, assetId) => {
     await waitForConfirmation(algodclient, txId, timeout);
     console.log("runRedeem, confirmed");
 
-    return txId;
+    return {
+      txId,
+      error: null,
+    };
   } catch (e) {
     console.log("error", e);
-    throw Error(e);
+    return {
+      txId: null,
+      error: e,
+    };
   }
 };
 
@@ -652,10 +673,16 @@ const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = 
     await waitForConfirmation(algodclient, txId, timeout);
     console.log("runUnlock, confirmed");
 
-    return txId;
+    return {
+      txId,
+      error: null,
+    };
   } catch (e) {
     console.log("error", e);
-    throw Error(e);
+    return {
+      txId: null,
+      error: e,
+    };
   }
 };
 
@@ -773,10 +800,16 @@ const sendALGO = async (algodclient, fromAccountAddr, toAccountAddr, signAccount
       console.log("sendALGO, confirmed");
     }
 
-    return txId;
+    return {
+      txId,
+      error: null,
+    };
   } catch (e) {
     console.log("error", e);
-    throw Error(e);
+    return {
+      txId: null,
+      error: e,
+    };
   }
 };
 
@@ -809,10 +842,16 @@ const sendASA = async (algodclient, fromAccountAddr, toAccountAddr, signAccount,
       console.log("sendALGO, confirmed");
     }
 
-    return txId;
+    return {
+      txId,
+      error: null,
+    };
   } catch (e) {
     console.log("error", e);
-    throw Error(e);
+    return {
+      txId: null,
+      error: e,
+    };
   }
 
   return txId;
