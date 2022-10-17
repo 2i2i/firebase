@@ -413,19 +413,19 @@ const settleMeeting = async (docRef, meeting) => {
 const updateRedeemBoth = async (meeting) => {
   if (!meeting.txns.unlock) return;
   const txInfo = await algorandIndexer.lookupTransactionByID(meeting.txns.unlock).do();
-  const p1 = updateRedeem(txInfo, meeting.B, meeting.speed.assetId, meeting.addrB, meeting.energy.B);
-  const p2 = updateRedeem(txInfo, meeting.A, meeting.speed.assetId, meeting.addrA, meeting.energy.A);
+  const p1 = updateRedeem(txInfo, meeting.B, meeting.addrB, meeting.speed.assetId, meeting.energy.B);
+  const p2 = updateRedeem(txInfo, meeting.A, meeting.addrA, meeting.speed.assetId, meeting.energy.A);
   return Promise.all([p1, p2]);
 }
 const updateRedeem = async(txInfo, uid, targetAlgorand, assetId, amount) => {
   // const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
   
-  console.log('txInfo', txInfo);
+  console.log('txInfo, uid, targetAlgorand, assetId, amount', uid, targetAlgorand, assetId, amount);
   console.log('1', txInfo.transaction['inner-txns']);
 
   let redeem = true;
   for (const t of txInfo.transaction['inner-txns'] ?? []) {
-    const receiver = assetId == 0 ? t['payment-transaction'].receiver : t['asset-transfer-transaction'].receiver;
+    const receiver = assetId === 0 ? t['payment-transaction']?.receiver : t['asset-transfer-transaction']?.receiver;
     console.log('receiver', receiver);
     // console.log('2', t['payment-transaction']);
     // console.log('3', t['asset-transfer-transaction']);
@@ -558,11 +558,11 @@ const send2i2iCoinsCore = async (amount, toAddr, uid) => {
 const addRedeem = (uid, assetId, amount) => {
   console.log('addRedeem, uid, assetId, amount', uid, assetId, amount);
   const docRef = db.collection("redeem").doc(uid);
-    return docRef.update({
+    return docRef.set({
       // FieldValue.increment(): works if key does not exist yet:
       // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
       [assetId]: FieldValue.increment(amount),
-    });
+    }, {merge: true});
 }
 
 exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context) => {
@@ -575,6 +575,8 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
     const docRef = db.collection("redeem").doc(uid);
     const doc = await T.get(docRef);
     const amount = doc.get(assetId);
+
+    if (!amount) return `uid=${uid}, assetId=${assetId} nothing to redeem`;
     
     // send coins
     const {txId, error}  = await runRedeem(algorandAlgod, amount, addr, assetId);
