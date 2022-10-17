@@ -127,7 +127,8 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return; // CAREFUL - if we ever change this, cancel would fail
 
     const energyA = paymentTxn.amount - 2 * MIN_TXN_FEE; // keep 2 fees
-    const txId = await runUnlock(algorandAlgod, energyA, 0, addrA, addrA, speed.assetId);
+    const {txId, error} = await runUnlock(algorandAlgod, energyA, 0, addrA, addrA, speed.assetId);
+    if (error) return error;
 
     const B = docBidOut.get("B");
     console.log("B", B);
@@ -382,7 +383,8 @@ const settleMeeting = async (docRef, meeting) => {
     } else {
       result = await settleASAMeeting(algorandAlgod, docRef.id, meeting);
     }
-    await send2i2iCoins(meeting);
+
+    if (!result.error) await send2i2iCoins(meeting);
   }
 
   console.log("settleMeeting, result", result);
@@ -402,30 +404,47 @@ const settleMeeting = async (docRef, meeting) => {
 
   const p1 = updateTopSpeeds(meeting);
   const p2 = updateTopDurations(meeting);
-  return Promise.all([p1, p2]);
+
+  const p3 = updateRedeemBoth(meeting);
+
+  return Promise.all([p1, p2, p3]);
 };
 
-const settleALGOMeeting = async (
-    algodclient,
-    id,
-    meeting,
+const updateRedeemBoth = async (meeting) => {
+  if (!meeting.txns.unlock) return;
+  const txInfo = await algorandIndexer.lookupTransactionByID(meeting.txns.unlock).do();
+  const p1 = updateRedeem(txInfo, meeting.B, meeting.addrB, meeting.speed.assetId, meeting.energy.B);
+  const p2 = updateRedeem(txInfo, meeting.A, meeting.addrA, meeting.speed.assetId, meeting.energy.A);
+  return Promise.all([p1, p2]);
+}
+const updateRedeem = async(txInfo, uid, targetAlgorand, assetId, amount) => {
+  // const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
+  
+  console.log('txInfo, uid, targetAlgorand, assetId, amount', uid, targetAlgorand, assetId, amount);
+  console.log('1', txInfo.transaction['inner-txns']);
+
+  let redeem = true;
+  for (const t of txInfo.transaction['inner-txns'] ?? []) {
+    const receiver = assetId === 0 ? t['payment-transaction']?.receiver : t['asset-transfer-transaction']?.receiver;
+    console.log('receiver', receiver);
+    // console.log('2', t['payment-transaction']);
+    // console.log('3', t['asset-transfer-transaction']);
+    // receiver, amount
+    if (receiver === targetAlgorand) {
+      redeem = false;
+    }
+  }
+
+  if (!redeem) return;
+
+  return addRedeem(uid, assetId, amount);
+}
+
+const settleMeetingCalcEnergy = (
+  amount,
+  meeting
 ) => {
-  const note = Buffer.from(id + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
-  console.log("note", note);
-  const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
-  console.log("lookup.transactions.length", lookup.transactions.length);
-
-  if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
-  const txn = lookup.transactions[0];
-  const sender = txn.sender;
-  console.log("sender", sender, meeting.A, sender === meeting.addrA);
-  if (sender !== meeting.addrA) return; // pay back to same account only
-  const paymentTxn = txn["payment-transaction"];
-  const receiver = paymentTxn.receiver;
-  console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
-  if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return;
-
-  const maxEnergy = paymentTxn.amount - 3 * MIN_TXN_FEE;
+  const maxEnergy = amount - 3 * MIN_TXN_FEE;
   console.log("maxEnergy", maxEnergy);
   if (maxEnergy !== meeting.energy.MAX) console.error("maxEnergy !== meeting.energy.MAX", maxEnergy, meeting.energy.MAX);
 
@@ -440,86 +459,186 @@ const settleALGOMeeting = async (
   const energyA = maxEnergy - energyB - energyCreator + (energyB === 0 ? MIN_TXN_FEE : 0) + (energyCreator === 0 ? MIN_TXN_FEE : 0);
   console.log("energyA", energyA);
 
-  const txId = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB);
+  return {
+    energyA,
+    energyCreator,
+    energyB,
+  };
+}
+
+const settleALGOMeeting = async (
+    algodclient,
+    meetingId,
+    meeting,
+) => {
+  const paymentTxn = await settleMeetingCheckTxn(meetingId, meeting, "pay");
+
+  const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(paymentTxn.amount, meeting);
+
+  const {txId, error} = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB);
 
   return {
-    txId: txId,
-    energyA: energyA,
-    energyCreator: energyCreator,
-    energyB: energyB,
+    txId,
+    energyA,
+    energyCreator,
+    energyB,
+    error,
   };
 };
 
+const settleMeetingCheckTxn = async (meetingId, meeting, txnType) => {
+  const note = Buffer.from(meetingId + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
+  console.log("note", note);
+  const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType(txnType).assetID(meeting.speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
+  console.log("lookup.transactions.length", lookup.transactions.length);
+
+  if (lookup.transactions.length !== 1) throw("lookup.transactions.length !== 1"); // there should exactly one lock txn for this bid
+  const txn = lookup.transactions[0];
+  const sender = txn.sender;
+  console.log("sender", sender, meeting.A, sender === meeting.addrA);
+  if (sender !== meeting.addrA) throw("sender !== meeting.addrA"); // pay back to same account only
+  console.log("txn", txn);
+  const innerTxn = meeting.speed.assetId == 0 ? txn["payment-transaction"] : txn["asset-transfer-transaction"];
+  const receiver = innerTxn.receiver;
+  console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
+  if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) throw("receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT");
+
+  return innerTxn;
+}
+
 const settleASAMeeting = async (
   algodclient,
-  id,
+  meetingId,
   meeting,
 ) => {
-const note = Buffer.from(id + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
-console.log("note", note);
-const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
-console.log("lookup.transactions.length", lookup.transactions.length);
+  const axferTxn = await settleMeetingCheckTxn(meetingId, meeting, "axfer");
 
-if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
-const txn = lookup.transactions[0];
-const sender = txn.sender;
-console.log("sender", sender, meeting.A, sender === meeting.addrA);
-if (sender !== meeting.addrA) return; // pay back to same account only
-console.log("txn", txn);
-const paymentTxn = txn["payment-transaction"]; // ?
-const receiver = paymentTxn.receiver; // ?
-console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
-if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return;
+  const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(axferTxn.amount, meeting);
 
-const maxEnergy = paymentTxn.amount - 4 * MIN_TXN_FEE; // ?
-console.log("maxEnergy", maxEnergy);
-if (maxEnergy !== meeting.energy.MAX) console.error("maxEnergy !== meeting.energy.MAX", maxEnergy, meeting.energy.MAX);
+  const {txId, error} = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB, meeting.speed.assetId);
 
-let energy = maxEnergy;
-if (meeting.status !== "END_TIMER_CALL_PAGE") energy = Math.min(meeting.duration * meeting.speed.num, energy);
-console.log("energy", energy);
-
-const energyB = Math.ceil(0.9 * energy);
-console.log("energyB", energyB);
-const energyCreator = energy - energyB;
-console.log("energyCreator", energyCreator);
-const energyA = maxEnergy - energyB - energyCreator + (energyB === 0 ? MIN_TXN_FEE : 0) + (energyCreator === 0 ? MIN_TXN_FEE : 0);
-console.log("energyA", energyA);
-
-const txId = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB, meeting.speed.assetId);
-
-return {
-  txId: txId,
-  energyA: energyA,
-  energyCreator: energyCreator,
-  energyB: energyB,
-};
+  return {
+    txId,
+    energyA,
+    energyCreator,
+    energyB,
+    error,
+  };
 };
 
 const send2i2iCoins = async (meeting) => {
   const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
-  // const partOfEnergy = energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
+  const partOfEnergy = 0; // energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
   const perMeeting = 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
-  console.log('perMeeting', perMeeting);
-  try {
-  await sendASA(algorandAlgod,
-          process.env.CREATOR_ACCOUNT,
-          meeting.addrA,
-          signAccount,
-          perMeeting,
-          process.env.ASA_ID*1,
-          );
-        } catch(e){}
-        try{
-  await sendASA(algorandAlgod,
-    process.env.CREATOR_ACCOUNT,
-    meeting.addrB,
-    signAccount,
-    perMeeting,
-    process.env.ASA_ID*1,
-    );
-  } catch(e){}
+  const amount = perMeeting + partOfEnergy;
+  const aFuture = send2i2iCoinsCore(amount, meeting.addrA, meeting.A);
+  const bFuture = send2i2iCoinsCore(amount, meeting.addrB, meeting.B);
+  return Promise.all([aFuture, bFuture]).catch(() => console.error("Oh no, an error occurred!"));
 }
+const send2i2iCoinsCore = async (amount, toAddr, uid) => {
+  console.log('send2i2iCoinsCore, amount, toAddr, uid', amount, toAddr, uid);
+  const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  const assetId = process.env.ASA_ID*1;
+
+    console.log('send2i2iCoinsCore before sendASA, assetId', assetId);
+    const {txId, error} = await sendASA(algorandAlgod,
+          process.env.CREATOR_ACCOUNT,
+          toAddr,
+          signAccount,
+          amount,
+          assetId,
+          );
+
+    if (error) {
+      console.log('send2i2iCoinsCore before addRedeem');
+      return addRedeem(uid, assetId, amount);
+    }
+}
+
+const addRedeem = (uid, assetId, amount) => {
+  console.log('addRedeem, uid, assetId, amount', uid, assetId, amount);
+  const docRef = db.collection("redeem").doc(uid);
+    return docRef.set({
+      // FieldValue.increment(): works if key does not exist yet:
+      // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
+      [assetId]: FieldValue.increment(amount),
+    }, {merge: true});
+}
+
+exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+  const uid = context.auth.uid;
+  const assetId = data.assetId;
+  const addr = data.addr;
+
+  return db.runTransaction(async (T) => {
+    // read db
+    const docRef = db.collection("redeem").doc(uid);
+    const doc = await T.get(docRef);
+    const amount = doc.get(assetId);
+
+    if (!amount) return `uid=${uid}, assetId=${assetId} nothing to redeem`;
+    
+    // send coins
+    const {txId, error}  = await runRedeem(algorandAlgod, amount, addr, assetId);
+    if (error) return `${error}`;
+
+    // update db
+    await docRef.update({
+      // FieldValue.increment(): works if key does not exist yet:
+      // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
+      [assetId]: FieldValue.increment(-amount),
+    });
+
+    return txId;
+  });
+});
+
+const runRedeem = async (algodclient, amount, addr, assetId) => {
+  console.log("runRedeem", amount, addr, assetId);
+  const signerAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  console.log("signerAccount.addr", signerAccount.addr);
+  const appArg0 = new TextEncoder().encode("REDEEM");
+  const appArg1 = algosdk.encodeUint64(amount);
+  const appArgs = [appArg0, appArg1];
+  const suggestedParams = await algodclient.getTransactionParams().do();
+  const txnObj = {
+    from: process.env.CREATOR_ACCOUNT,
+    appIndex: Number(process.env.ALGORAND_SYSTEM_ID),
+    appArgs,
+    accounts: [addr],
+    suggestedParams,
+  }
+  if (assetId !== 0) txnObj.foreignAssets = [assetId];
+
+  const txn = algosdk.makeApplicationNoOpTxnFromObject(txnObj);
+  console.log("runRedeem, txn");
+
+  // sign
+  const stateTxnSigned = txn.signTxn(signerAccount.sk);
+  console.log("runRedeem, signed");
+
+  // send
+  try {
+    const {txId} = await algodclient.sendRawTransaction([stateTxnSigned]).do();
+    console.log("runRedeem, sent", txId);
+
+    // confirm
+    const timeout = 5;
+    await waitForConfirmation(algodclient, txId, timeout);
+    console.log("runRedeem, confirmed");
+
+    return {
+      txId,
+      error: null,
+    };
+  } catch (e) {
+    console.log("error", e);
+    return {
+      txId: null,
+      error: e,
+    };
+  }
+};
 
 const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = null) => {
   console.log("runUnlock", energyA, energyB, addrA, addrB, assetId);
@@ -556,10 +675,16 @@ const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = 
     await waitForConfirmation(algodclient, txId, timeout);
     console.log("runUnlock, confirmed");
 
-    return txId;
+    return {
+      txId,
+      error: null,
+    };
   } catch (e) {
     console.log("error", e);
-    throw Error(e);
+    return {
+      txId: null,
+      error: e,
+    };
   }
 };
 
@@ -677,10 +802,16 @@ const sendALGO = async (algodclient, fromAccountAddr, toAccountAddr, signAccount
       console.log("sendALGO, confirmed");
     }
 
-    return txId;
+    return {
+      txId,
+      error: null,
+    };
   } catch (e) {
     console.log("error", e);
-    throw Error(e);
+    return {
+      txId: null,
+      error: e,
+    };
   }
 };
 
@@ -713,10 +844,16 @@ const sendASA = async (algodclient, fromAccountAddr, toAccountAddr, signAccount,
       console.log("sendALGO, confirmed");
     }
 
-    return txId;
+    return {
+      txId,
+      error: null,
+    };
   } catch (e) {
     console.log("error", e);
-    throw Error(e);
+    return {
+      txId: null,
+      error: e,
+    };
   }
 
   return txId;
@@ -1255,10 +1392,14 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 // TEST
 
 // test({})
-// exports.test = functions.https.onCall(async (data, context) => {
-//   // console.log(FieldValue.serverTimestamp);
-//   const docRef = db.collection("test").doc("a");
-//   return docRef.update({
-//     a: FieldValue.serverTimestamp()
-//   });
-// });
+exports.test = functions.https.onCall(async (data, context) => {
+  const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
+  const txInfo = await algorandIndexer.lookupTransactionByID(txId).do();
+  console.log('txInfo', txInfo);
+  console.log('1', txInfo.transaction['inner-txns']);
+  for (const t of txInfo.transaction['inner-txns']) {
+    console.log('2', t['payment-transaction']);
+    console.log('3', t['asset-transfer-transaction']);
+    // receiver, amount
+  }
+});
