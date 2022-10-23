@@ -13,6 +13,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // FX
+    match /FX/{document=**} {
+      allow read: if request.auth != null;
+    }
+
     /////////////////////////
     // all
     match /{document=**} {
@@ -130,7 +135,7 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == userId;
 
       // addBid rule: request.auth.uid == A
-      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['B', 'speed', 'net', 'addrA', 'active', 'txns', 'energy', 'comment'].toSet();
+      allow create: if request.auth != null && request.auth.uid == userId && request.resource.data.B != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['B', 'speed', 'net', 'addrA', 'active', 'txns', 'energy', 'comment', 'FX'].toSet();
 
       // cancelOwnBid rule: request.auth.uid == A
       allow update: if request.auth != null && request.auth.uid == userId && fromActiveToInActive() && changeOnlyActive();
@@ -142,7 +147,7 @@ service cloud.firestore {
       allow read: if request.auth != null;
 
       // addBid rule: request.auth.uid == A
-      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['speed', 'net', 'active', 'ts', 'rule', 'energy'].toSet();
+      allow create: if request.auth != null && request.auth.uid != userId && request.resource.data.active == true && request.resource.data.keys().toSet() == ['speed', 'net', 'active', 'ts', 'rule', 'energy', 'FX'].toSet();
 
       // cancelOwnBid rule: request.auth.uid == A
       allow update: if request.auth != null && fromActiveToInActive() && changeOnlyActive() && request.auth.uid == get(/databases/$(database)/documents/users/$(userId)/bidInsPrivate/$(bidId)).data.A;

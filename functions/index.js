@@ -1261,6 +1261,37 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 
 // MIGRATION
 
+// const addFXHelper = async (colRef) => {
+//   const querySnapshot = await colRef.get();
+//   const ps = [];
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const speed = queryDocSnapshot.get("speed");
+//     const assetId = speed.assetId;
+//     if (assetId !== 0) {
+//       console.log(assetId, queryDocSnapshot.ref.path);
+//       continue;
+//     }
+//     const p = queryDocSnapshot.ref.update({FX: 1});
+//     ps.push(p);
+//   }
+//   return Promise.all(ps);
+// }
+// exports.addFX = functions.https.onCall(async (data, context) => {
+//   const usersColRef = db.collection("users");
+//   const querySnapshot = await usersColRef.get();
+//   const ps = [];
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const bidOutsColRef = queryDocSnapshot.ref.collection("bidOuts");
+//     const p = addFXHelper(bidOutsColRef);
+//     ps.push(p);
+
+//     const bidInsPublicColRef = queryDocSnapshot.ref.collection("bidInsPublic");
+//     const p2 = addFXHelper(bidInsPublicColRef);
+//     ps.push(p2);
+//   }
+//   return Promise.all(ps);
+// });
+
 // exports.addHeartbeat = functions.https.onCall(async (data, context) => {
 //   const usersColRef = db.collection("users");
 //   const querySnapshot = await usersColRef.get();
