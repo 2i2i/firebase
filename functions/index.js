@@ -529,7 +529,7 @@ const settleASAMeeting = async (
 const send2i2iCoins = async (meeting) => {
   const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   const partOfEnergy = 0; // energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
-  const perMeeting = 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
+  const perMeeting = 1; // 0.5*0.01*10^(-9)*(2^64-1);
   const amount = perMeeting + partOfEnergy;
   const aFuture = send2i2iCoinsCore(amount, meeting.addrA, meeting.A);
   const bFuture = send2i2iCoinsCore(amount, meeting.addrB, meeting.B);
