@@ -499,7 +499,7 @@ return {
 const send2i2iCoins = async (meeting) => {
   const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   // const partOfEnergy = energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
-  const perMeeting = 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
+  const perMeeting = 1; // 0.5*0.01*10^(-9)*(2^64-1);
   console.log('perMeeting', perMeeting);
   try {
   await sendASA(algorandAlgod,
