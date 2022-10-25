@@ -97,6 +97,29 @@ exports.createToken = functions.https.onCall(async (data, context) => {
 //   });
 // });
 
+const findTxn = async (id, speed, A, addrA) => {
+  console.log("findTxn, id, speed, A, addrA", id, speed, A, addrA);
+  const note = Buffer.from(id + "." + speed.num + "." + speed.assetId).toString("base64");
+  console.log("note", note);
+  const txType = speed.assetId === 0 ? "pay" : "axfer";
+  console.log("txType", txType);
+  const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType(txType).assetID(speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
+  console.log("lookup.transactions.length", lookup.transactions.length);
+
+  if (lookup.transactions.length !== 1) throw("lookup.transactions.length !== 1"); // there should exactly one lock txn for this bid
+  const txn = lookup.transactions[0];
+  const sender = txn.sender;
+  console.log("sender", sender, A, sender === addrA);
+  if (sender !== addrA) throw("sender !== addrA"); // pay back to same account only
+  console.log("txn", txn);
+  const innerTxn = speed.assetId == 0 ? txn["payment-transaction"] : txn["asset-transfer-transaction"];
+  const receiver = innerTxn.receiver;
+  console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
+  if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) throw("receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT");
+
+  return innerTxn;
+}
+
 exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
   const uid = context.auth.uid;
   const bidId = data.bidId;
@@ -109,24 +132,10 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     const docBidOut = await T.get(docRefBidOut);
     const speed = docBidOut.get("speed");
     const addrA = docBidOut.get("addrA");
-    const noteString = bidId + "." + speed.num + "." + speed.assetId;
-    console.log("noteString", noteString);
-    const note = Buffer.from(noteString).toString("base64");
-    console.log("note", note);
-    const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType("pay").assetID(0).notePrefix(note).minRound(19000000).do();
-    console.log("lookup.transactions.length", lookup.transactions.length);
+    
+    const txn = await findTxn(bidId, speed, uid, addrA);
 
-    if (lookup.transactions.length !== 1) return; // there should exactly one lock txn for this bid
-    const txn = lookup.transactions[0];
-    const sender = txn.sender;
-    console.log("sender", sender, addrA, sender !== addrA);
-    if (sender !== addrA) return; // pay back to same account only
-    const paymentTxn = txn["payment-transaction"];
-    const receiver = paymentTxn.receiver;
-    console.log("receiver", receiver, receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT);
-    if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) return; // CAREFUL - if we ever change this, cancel would fail
-
-    const energyA = paymentTxn.amount - 2 * MIN_TXN_FEE; // keep 2 fees
+    const energyA = txn.amount - 2 * MIN_TXN_FEE; // keep 2 fees
     const {txId, error} = await runUnlock(algorandAlgod, energyA, 0, addrA, addrA, speed.assetId);
     if (error) return error;
 
@@ -222,12 +231,12 @@ exports.ratingAdded = functions.runWith(runWithObj).firestore
       const userId = context.params.userId;
       return db.runTransaction(async (T) => {
         const docRefUser = db.collection("users").doc(userId);
-        const docUser = await docRefUser.get();
+        const docUser = await T.get(docRefUser);
         const numRatings = docUser.get("numRatings") ?? 0;
         const userRating = docUser.get("rating") ?? 1;
         const newNumRatings = numRatings + 1;
         const newRating = (userRating * numRatings + meetingRating) / newNumRatings; // works for numRatings == 0
-        await docRefUser.update({
+        return T.update(docRefUser, {
           rating: newRating,
           numRatings: newNumRatings,
         });
@@ -471,7 +480,7 @@ const settleALGOMeeting = async (
     meetingId,
     meeting,
 ) => {
-  const paymentTxn = await settleMeetingCheckTxn(meetingId, meeting, "pay");
+  const paymentTxn = await findTxn(meetingId, meeting.speed, meeting.A, meeting.addrA);
 
   const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(paymentTxn.amount, meeting);
 
@@ -486,32 +495,12 @@ const settleALGOMeeting = async (
   };
 };
 
-const settleMeetingCheckTxn = async (meetingId, meeting, txnType) => {
-  const note = Buffer.from(meetingId + "." + meeting.speed.num + "." + meeting.speed.assetId).toString("base64");
-  console.log("note", note);
-  const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType(txnType).assetID(meeting.speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
-  console.log("lookup.transactions.length", lookup.transactions.length);
-
-  if (lookup.transactions.length !== 1) throw("lookup.transactions.length !== 1"); // there should exactly one lock txn for this bid
-  const txn = lookup.transactions[0];
-  const sender = txn.sender;
-  console.log("sender", sender, meeting.A, sender === meeting.addrA);
-  if (sender !== meeting.addrA) throw("sender !== meeting.addrA"); // pay back to same account only
-  console.log("txn", txn);
-  const innerTxn = meeting.speed.assetId == 0 ? txn["payment-transaction"] : txn["asset-transfer-transaction"];
-  const receiver = innerTxn.receiver;
-  console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
-  if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) throw("receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT");
-
-  return innerTxn;
-}
-
 const settleASAMeeting = async (
   algodclient,
   meetingId,
   meeting,
 ) => {
-  const axferTxn = await settleMeetingCheckTxn(meetingId, meeting, "axfer");
+  const axferTxn = await findTxn(meetingId, meeting.speed, meeting.A, meeting.addrA);
 
   const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(axferTxn.amount, meeting);
 
@@ -527,9 +516,8 @@ const settleASAMeeting = async (
 };
 
 const send2i2iCoins = async (meeting) => {
-  const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   const partOfEnergy = 0; // energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
-  const perMeeting = 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
+  const perMeeting = 1; // 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
   const amount = perMeeting + partOfEnergy;
   const aFuture = send2i2iCoinsCore(amount, meeting.addrA, meeting.A);
   const bFuture = send2i2iCoinsCore(amount, meeting.addrB, meeting.B);
@@ -553,16 +541,18 @@ const send2i2iCoinsCore = async (amount, toAddr, uid) => {
       console.log('send2i2iCoinsCore before addRedeem');
       return addRedeem(uid, assetId, amount);
     }
+
+    return txId;
 }
 
 const addRedeem = (uid, assetId, amount) => {
   console.log('addRedeem, uid, assetId, amount', uid, assetId, amount);
   const docRef = db.collection("redeem").doc(uid);
-    return docRef.set({
-      // FieldValue.increment(): works if key does not exist yet:
-      // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
-      [assetId]: FieldValue.increment(amount),
-    }, {merge: true});
+  return docRef.set({
+    // FieldValue.increment(): works if key does not exist yet:
+    // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
+    [assetId]: FieldValue.increment(amount),
+  }, {merge: true});
 }
 
 exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context) => {
@@ -583,7 +573,7 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
     if (error) return `${error}`;
 
     // update db
-    await docRef.update({
+    await T.update(docRef, {
       // FieldValue.increment(): works if key does not exist yet:
       // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
       [assetId]: FieldValue.increment(-amount),
