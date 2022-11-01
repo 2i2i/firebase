@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:meetingUpdated,functions:cancelBid
+// firebase deploy --only functions:checkUserStatus,functions:cancelBid
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -456,7 +456,7 @@ const settleMeetingCalcEnergy = (
   console.log("energyB", energyB);
   const energyCreator = energy - energyB;
   console.log("energyCreator", energyCreator);
-  const energyA = maxEnergy - energyB - energyCreator + (energyB === 0 ? MIN_TXN_FEE : 0) + (energyCreator === 0 ? MIN_TXN_FEE : 0);
+  const energyA = maxEnergy - energyB - energyCreator + (energyB === 0 ? MIN_TXN_FEE : 0);
   console.log("energyA", energyA);
 
   return {
