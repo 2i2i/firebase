@@ -23,7 +23,7 @@ admin.initializeApp(
 const db = admin.firestore();
 // const messaging = admin.messaging();
 const { getAuth } = require("firebase-admin/auth");
-const { FieldValue } = require("firebase-admin/firestore");
+const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 
 const https = require('https');
 const { firebaseConfig } = require("firebase-functions");
@@ -524,7 +524,7 @@ const settleMeetingCalcEnergy = (
   console.log("energyB", energyB);
   const energyCreator = energy - energyB;
   console.log("energyCreator", energyCreator);
-  const energyA = maxEnergy - energyB - energyCreator + (energyB === 0 ? MIN_TXN_FEE : 0) + (energyCreator === 0 ? MIN_TXN_FEE : 0);
+  const energyA = maxEnergy - energyB - energyCreator + (energyB === 0 ? MIN_TXN_FEE : 0);
   console.log("energyA", energyA);
 
   return {
@@ -746,14 +746,20 @@ const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = 
 };
 
 // every minute
-const disconnectMeeting = async (meetingId, A, B) => {
+const disconnectMeeting = async (meetingId) => {
+  console.log('disconnectMeeting, meetingId', meetingId);
+
   const meetingObj = {
     status: "END_DISCONNECT",
-    statusHistory: FieldValue.arrayUnion({value: "END_DISCONNECT", ts: admin.firestore.Timestamp.now()}),
+    statusHistory: FieldValue.arrayUnion({value: "END_DISCONNECT", ts: Timestamp.now()}),
     active: false,
     end: FieldValue.serverTimestamp(),
   };
   const meetingDocRef = db.collection("meetings").doc(meetingId);
+
+  const meetingDoc = await meetingDocRef.get();
+  const A = meetingDoc.get("A");
+  const B = meetingDoc.get("B");
 
   const colRef = db.collection("users");
   const docRefA = colRef.doc(A);
@@ -766,6 +772,13 @@ const disconnectMeeting = async (meetingId, A, B) => {
     T.update(docRefB, unlockObj);
   });
 };
+const disconnectIfNeeded = async (queryDocSnapshotUser, ps) => {
+  const meetingId = queryDocSnapshotUser.get("meeting");
+  if (meetingId) {
+    const p = disconnectMeeting(meetingId);
+    ps.push(p);
+  }
+}
 exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun((context) => {
   const T = new Date();
   T.setSeconds(T.getSeconds() - 10);
@@ -779,20 +792,17 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   queryRefForOnline.get().then((querySnapshot) => {
     console.log('checkUserStatus, queryRefForOnline', querySnapshot.size);
     querySnapshot.forEach(async (queryDocSnapshotUser) => {
+      console.log('checkUserStatus, queryRefForOnline, queryDocSnapshotUser.id', queryDocSnapshotUser.id);
       const heartbeatBackground = queryDocSnapshotUser.get("heartbeatBackground");
+      console.log('checkUserStatus, queryRefForOnline, heartbeatBackground', heartbeatBackground);
       if (heartbeatBackground < T) {
+        console.log('checkUserStatus, queryRefForOnline, heartbeatBackground < T');
         const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
         ps.push(p);
-    
-        const meeting = queryDocSnapshotUser.get("meeting");
-        if (meeting) {
-          const A = queryDocSnapshotUser.get("A");
-          const B = queryDocSnapshotUser.get("B");
-          const p = disconnectMeeting(meeting, A, B);
-          ps.push(p);
-        }
+        disconnectIfNeeded(queryDocSnapshotUser, ps);
       }
       else {
+        console.log('checkUserStatus, queryRefForOnline, NOT heartbeatBackground < T');
         const p = queryDocSnapshotUser.ref.update({status: "IDLE"});
         ps.push(p);
       }
@@ -803,16 +813,10 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   queryRefForIdle.get().then((querySnapshot) => {
     console.log('checkUserStatus, queryRefForIdle', querySnapshot.size);
     querySnapshot.forEach(async (queryDocSnapshotUser) => {
+      console.log('checkUserStatus, queryRefForIdle, queryDocSnapshotUser.id', queryDocSnapshotUser.id);
       const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
       ps.push(p);
-  
-      const meeting = queryDocSnapshotUser.get("meeting");
-      if (meeting) {
-        const A = queryDocSnapshotUser.get("A");
-        const B = queryDocSnapshotUser.get("B");
-        const p = disconnectMeeting(meeting, A, B);
-        ps.push(p);
-      }
+      disconnectIfNeeded(queryDocSnapshotUser, ps);
     });
   });
 
@@ -821,6 +825,7 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   queryRefForOffline.get().then((querySnapshot) => {
     console.log('checkUserStatus, queryRefForOffline', querySnapshot.size);
     querySnapshot.forEach(async (queryDocSnapshotUser) => {
+      console.log('checkUserStatus, queryRefForOffline, queryDocSnapshotUser.id', queryDocSnapshotUser.id);
       const p = queryDocSnapshotUser.ref.update({status: "IDLE"});
       ps.push(p);
     });
