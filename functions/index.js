@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:meetingUpdated,functions:cancelBid
+// firebase deploy --only functions:redeem,functions:cancelBid
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -614,21 +614,29 @@ const addRedeem = (uid, assetId, amount) => {
   }, {merge: true});
 }
 
+// redeem({assetId: 78585497, addr: "addr"})
 exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+
+  
   const uid = context.auth.uid;
   const assetId = data.assetId;
   const addr = data.addr;
+
+  console.log("redeem, uid, assetId, addr", uid, assetId, addr);
 
   return db.runTransaction(async (T) => {
     // read db
     const docRef = db.collection("redeem").doc(uid);
     const doc = await T.get(docRef);
-    const amount = doc.get(assetId);
+
+    const amount = doc.get(assetId.toString());
+    console.log("redeem, amount", amount);
 
     if (!amount) return `uid=${uid}, assetId=${assetId} nothing to redeem`;
     
     // send coins
     const {txId, error}  = await runRedeem(algorandAlgod, amount, addr, assetId);
+    console.log("redeem, txId, error", txId, error);
     if (error) return `${error}`;
 
     // update db
