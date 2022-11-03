@@ -1125,6 +1125,7 @@ const topObj = (meeting, nameA, nameB, infoFn, valueFn) => {
 const updateTopMeetings = async (collection, meetingId, meeting, infoFn, valueFn) => {
   console.log("updateTopMeetings, collection, meetingId", collection, meetingId);
 
+  if (!meeting.settled) return;
   if (meeting.speed.num === 0) return;
   if (meeting.duration === 0) return;
   
