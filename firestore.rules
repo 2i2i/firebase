@@ -24,6 +24,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // redeem
+    match /redeem/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+    }
+
     // FX
     match /FX/{document=**} {
       allow read: if request.auth != null;
