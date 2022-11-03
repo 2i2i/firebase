@@ -26,7 +26,6 @@ const { getAuth } = require("firebase-admin/auth");
 const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 
 const https = require('https');
-const { firebaseConfig } = require("firebase-functions");
 
 const algorandAlgod = new algosdk.Algodv2(
     "",
