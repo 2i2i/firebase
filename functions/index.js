@@ -10,9 +10,14 @@
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
+// firebase firestore:indexes
+// firebase deploy --only firestore:indexes
+
 const functions = require("firebase-functions");
 const algosdk = require("algosdk");
 // algosdk.algosToMicroalgos(1);
+
+// FX is ALGO per speed.assetId
 
 const admin = require("firebase-admin");
 admin.initializeApp(
@@ -469,12 +474,13 @@ const settleMeeting = async (docRef, meeting) => {
   }
   await docRef.update(updateObj); // not in parallel in case of early bugs
 
-  const p1 = updateTopSpeeds(meeting);
-  const p2 = updateTopDurations(meeting);
+  const p1 = updateTopSpeeds(docRef.id, meeting);
+  const p2 = updateTopDurations(docRef.id, meeting);
+  const p3 = updateTopValues(docRef.id, meeting);
 
-  const p3 = updateRedeemBoth(meeting);
+  const p4 = updateRedeemBoth(meeting);
 
-  return Promise.all([p1, p2, p3]);
+  return Promise.all([p1, p2, p3, p4]);
 };
 
 const updateRedeemBoth = async (meeting) => {
@@ -1048,66 +1054,116 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
 };
 
+//////
+// TOP
 
-const updateTopDurations = async (meeting) => updateTopMeetings("topDurations", "duration", meeting);
-const updateTopSpeeds = async (meeting) => updateTopMeetings("topSpeeds", "speed.num", meeting);
-const addTopMeeting = async (T, colRef, meeting) => {
-  const docRefB = db.collection("users").doc(meeting.B);
-  const docB = await T.get(docRefB);
-  const nameB = docB.get("name");
-  const docRefNewTopMeeting = colRef.doc();
-  T.create(docRefNewTopMeeting, {
-    B: meeting.B,
-    name: nameB,
+const TOP_SIZE = 10
+
+const updateTopValues = async (meetingId, meeting) => updateTopMeetings("topValues", meetingId, meeting, topValueInfo, topValueValue);
+const updateTopSpeeds = async (meetingId, meeting) => updateTopMeetings("topSpeeds", meetingId, meeting, topSpeedInfo, topSpeedValue);
+const updateTopDurations = async (meetingId, meeting) => updateTopMeetings("topDurations", meetingId, meeting, topDurationInfo, topDurationValue);
+
+const topValueValue = (meeting) => meeting.speed.num * meeting.FX * meeting.duration;
+const topSpeedValue = (meeting) => meeting.speed.num * meeting.FX;
+const topDurationValue = (meeting) => meeting.duration;
+
+const topValueInfo = (meeting) => {
+  return {
     duration: meeting.duration,
     speed: meeting.speed,
-    ts: meeting.end,
-  });
-  return T;
+    FX: meeting.FX,
+  };
+}
+const topSpeedInfo = (meeting) => {
+  return {
+    speed: meeting.speed,
+    FX: meeting.FX,
+  };
+}
+const topDurationInfo = (meeting) => {
+  return {
+    duration: meeting.duration,
+  };
+}
+
+const getNamesForTopMeeting = async (T, meeting) => {
+  const docRefA = db.collection("users").doc(meeting.A);
+  const docRefB = db.collection("users").doc(meeting.B);
+  const docRefAGet = T.get(docRefA);
+  const docRefBGet = T.get(docRefB);
+  const docRefResults = await Promise.all([docRefAGet, docRefBGet]);
+  const docA = docRefResults[0];
+  const docB = docRefResults[1];
+  const A = docA.get("name");
+  const B = docB.get("name");
+  return { A, B };
+}
+const addTopMeeting = async (T, colRef, meetingId, meeting, infoFn, valueFn, worst) => {
+  console.log("addTopMeeting, meetingId", meetingId);
+
+  if (worst) T.delete(worst);
+
+  const names = await getNamesForTopMeeting(T, meeting);
+  console.log("addTopMeeting, names", names);
+  const obj = topObj(meeting, names.A, names.B, infoFn, valueFn)
+  console.log("addTopMeeting, obj", obj);
+  const docRefNewTopMeeting = colRef.doc(meetingId);
+  return T.create(docRefNewTopMeeting, obj);
 };
-const updateTopMeetings = async (collection, field, meeting) => {
-  console.log("updateTopMeetings, collection, field", collection, field);
-  if (meeting.duration === 0) return;
+const topObj = (meeting, nameA, nameB, infoFn, valueFn) => {
+  return {
+    A: meeting.A,
+    B: meeting.B,
+    nameA,
+    nameB,
+    ts: meeting.end,
+    info: infoFn(meeting),
+    value: valueFn(meeting),
+  };
+}
+
+const updateTopMeetings = async (collection, meetingId, meeting, infoFn, valueFn) => {
+  console.log("updateTopMeetings, collection, meetingId", collection, meetingId);
+
+  if (!meeting.settled) return;
   if (meeting.speed.num === 0) return;
+  if (meeting.duration === 0) return;
+  
   const colRef = db.collection(collection);
-  const query = colRef.orderBy(field, "desc").orderBy("ts");
-  return db.runTransaction(async (T) => {
+  const query = colRef.orderBy("value", "desc").orderBy("ts");
+
+  const added = await db.runTransaction(async (T) => {
     const querySnapshot = await T.get(query);
     console.log("querySnapshot.size", querySnapshot.size);
 
-    if (querySnapshot.size < 10) return addTopMeeting(T, colRef, meeting);
+    let worst = null;
+    if (querySnapshot.size < TOP_SIZE) {
+      await addTopMeeting(T, colRef, meetingId, meeting, infoFn, valueFn, worst);
+      return true;
+    }
 
     for (let i = 0; i < querySnapshot.size; i++) {
       const queryDocSnapshot = querySnapshot.docs[i];
-      const docField = queryDocSnapshot.get(field);
-      console.log("i", i, docField, queryDocSnapshot.get("ts"));
+      const value = queryDocSnapshot.get("value");
+      console.log("i", i, value, queryDocSnapshot.get("ts"));
 
-      if (docField < meeting[field]) {
-        console.log("yay");
-
-        const docRefB = db.collection("users").doc(meeting.B);
-        const docB = await T.get(docRefB);
-        const nameB = docB.get("name");
-        const docRefNewTopMeeting = colRef.doc();
-
-        // remove last top meeting
-        const queryDocSnapshotLast = querySnapshot.docs[querySnapshot.size - 1];
-        T.delete(queryDocSnapshotLast.ref);
-
-        // T = addTopMeeting(T, colRef, meeting);
-        T.create(docRefNewTopMeeting, {
-          B: meeting.B,
-          name: nameB,
-          duration: meeting.duration,
-          speed: meeting.speed,
-          ts: meeting.end,
-        });
-
-        break;
+      const valueMeeting = valueFn(meeting)
+      if (valueMeeting && value < valueMeeting) {
+        worst = querySnapshot.docs[querySnapshot.size - 1].ref;
+        console.log("new record, worst.id", worst.id);
+        await addTopMeeting(T, colRef, meetingId, meeting, infoFn, valueFn, worst);
+        return true;
       }
     }
+
+    return false;
   });
+
+  return added;
 };
+
+// TOP
+//////
 
 const deleteDocsInCollection = (colRef, promises) =>
   colRef.listDocuments().then((docRefs) => {
@@ -1322,6 +1378,38 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 
 // MIGRATION
 
+// exports.resetTop = functions.https.onCall(async (data, context) => {
+//   const colRef = db.collection("meetings");
+//   const querySnapshot = await colRef.get();
+//   console.log("querySnapshot.size", querySnapshot.size);
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const meetingId = queryDocSnapshot.id;
+//     console.log("meetingId", meetingId);
+//     const meeting = queryDocSnapshot.data();
+
+//     if (!meeting.settled) continue;
+
+//     const p1 = updateTopValues(meetingId, meeting).catch((_) => {});
+//     const p2 = updateTopSpeeds(meetingId, meeting).catch((_) => {});
+//     const p3 = updateTopDurations(meetingId, meeting).catch((_) => {});
+//     await Promise.all([p1, p2, p3]);
+//   }
+//   console.log("done");
+// });
+
+// exports.addFXToMeetings = functions.https.onCall(async (data, context) => {
+//   const colRef = db.collection("meetings");
+//   const querySnapshot = await colRef.get();
+//   const ps = [];
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const FX = queryDocSnapshot.get("FX");
+//     if (FX) continue;
+//     const p = queryDocSnapshot.ref.update({FX: 1});
+//     ps.push(p);
+//   }
+//   return Promise.all(ps);
+// });
+
 // exports.addFX = functions.https.onCall(async (data, context) => {
 //   const assetIds = [31566704, 137594422, 226701642, 724480511, 793124631, 283820866, 300208676, 287867876, 388592191, 27165954, 312769, 523683256, 571576867, 747635241, 470842789, 712012773, 818432243, 900652777, 444035862, 744665252, 559219992, 753137719, 403499324, 386192725, 692432647, 913799044, 386195940, 607591690, 511484048];
 //   // const assetIds = [31566704];
@@ -1510,6 +1598,20 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 // });
 
 // TEST
+
+// exports.updateTopValuesTEST = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+//   const meetingId = "15WmC6Zsw7cl8kGRxXKP";
+//   const doc = await db.collection("meetings").doc(meetingId).get();
+//   const meeting = doc.data();
+
+//   // meeting.FX = 1;
+//   // meeting.speed = {assetId: 0, num: 1};
+//   // meeting.duration = 7;
+
+//   // return updateTopValues(meetingId, meeting);
+//   // return updateTopSpeeds(meetingId, meeting);
+//   return updateTopDurations(meetingId, meeting);
+// });
 
 // test({})
 // exports.test = functions.https.onCall(async (data, context) => {

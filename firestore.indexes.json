@@ -97,7 +97,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "duration",
+          "fieldPath": "value",
           "order": "DESCENDING"
         },
         {
@@ -111,7 +111,21 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "speed.num",
+          "fieldPath": "value",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "ts",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "topValues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "value",
           "order": "DESCENDING"
         },
         {
