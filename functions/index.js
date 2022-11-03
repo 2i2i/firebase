@@ -1378,24 +1378,24 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 
 // MIGRATION
 
-exports.resetTop = functions.https.onCall(async (data, context) => {
-  const colRef = db.collection("meetings");
-  const querySnapshot = await colRef.get();
-  console.log("querySnapshot.size", querySnapshot.size);
-  for (const queryDocSnapshot of querySnapshot.docs) {
-    const meetingId = queryDocSnapshot.id;
-    console.log("meetingId", meetingId);
-    const meeting = queryDocSnapshot.data();
+// exports.resetTop = functions.https.onCall(async (data, context) => {
+//   const colRef = db.collection("meetings");
+//   const querySnapshot = await colRef.get();
+//   console.log("querySnapshot.size", querySnapshot.size);
+//   for (const queryDocSnapshot of querySnapshot.docs) {
+//     const meetingId = queryDocSnapshot.id;
+//     console.log("meetingId", meetingId);
+//     const meeting = queryDocSnapshot.data();
 
-    if (!meeting.settled) continue;
+//     if (!meeting.settled) continue;
 
-    const p1 = updateTopValues(meetingId, meeting).catch((_) => {});
-    const p2 = updateTopSpeeds(meetingId, meeting).catch((_) => {});
-    const p3 = updateTopDurations(meetingId, meeting).catch((_) => {});
-    await Promise.all([p1, p2, p3]);
-  }
-  console.log("done");
-});
+//     const p1 = updateTopValues(meetingId, meeting).catch((_) => {});
+//     const p2 = updateTopSpeeds(meetingId, meeting).catch((_) => {});
+//     const p3 = updateTopDurations(meetingId, meeting).catch((_) => {});
+//     await Promise.all([p1, p2, p3]);
+//   }
+//   console.log("done");
+// });
 
 // exports.addFXToMeetings = functions.https.onCall(async (data, context) => {
 //   const colRef = db.collection("meetings");
