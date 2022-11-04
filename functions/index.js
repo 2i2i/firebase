@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:cancelBid,functions:meetingUpdated
+// firebase deploy --only functions:meetingUpdated,functions:meetingUpdated
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -579,34 +579,49 @@ const settleASAMeeting = async (
   };
 };
 
+// const isOptedIn = async (addr, ) => {
+//   let accountInfo = await algodclient.accountInformation(account).do();
+//     for (idx = 0; idx < accountInfo['assets'].length; idx++) {
+//         let scrutinizedAsset = accountInfo['assets'][idx];
+//         if (scrutinizedAsset['asset-id'] == assetid) {
+//             let myassetholding = JSON.stringify(scrutinizedAsset, undefined, 2);
+//             console.log("assetholdinginfo = " + myassetholding);
+//             break;
+//         }
+//     }
+
+// }
+
 const send2i2iCoins = async (meeting) => {
   const partOfEnergy = 0; // energyCreator * 0.005 * 0.5 * FX; // need fx ALGO/2I2I
   const perMeeting = 1; // 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
   const amount = perMeeting + partOfEnergy;
-  const aFuture = send2i2iCoinsCore(amount, meeting.addrA, meeting.A);
-  const bFuture = send2i2iCoinsCore(amount, meeting.addrB, meeting.B);
-  return Promise.all([aFuture, bFuture]).catch(() => console.error("Oh no, an error occurred!"));
+  await send2i2iCoinsCore(amount, meeting.addrA, meeting.A);
+  await  send2i2iCoinsCore(amount, meeting.addrB, meeting.B);
 }
 const send2i2iCoinsCore = async (amount, toAddr, uid) => {
   console.log('send2i2iCoinsCore, amount, toAddr, uid', amount, toAddr, uid);
   const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   const assetId = process.env.ASA_ID*1;
 
-    console.log('send2i2iCoinsCore before sendASA, assetId', assetId);
-    const {txId, error} = await sendASA(algorandAlgod,
-          process.env.CREATOR_ACCOUNT,
-          toAddr,
-          signAccount,
-          amount,
-          assetId,
-          );
+  // is toAddr opted-in?
+  // toAddr
 
-    if (error) {
-      console.log('send2i2iCoinsCore before addRedeem');
-      return addRedeem(uid, assetId, amount);
-    }
+  console.log('send2i2iCoinsCore before sendASA, assetId', assetId);
+  const {txId, error} = await sendASA(algorandAlgod,
+        process.env.CREATOR_ACCOUNT,
+        toAddr,
+        signAccount,
+        amount,
+        assetId,
+        );
 
-    return txId;
+  if (error) {
+    console.log('send2i2iCoinsCore before addRedeem');
+    return addRedeem(uid, assetId, amount);
+  }
+
+  return txId;
 }
 
 const addRedeem = (uid, assetId, amount) => {
