@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:redeem,functions:cancelBid
+// firebase deploy --only functions:meetingUpdated,functions:cancelBid
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -1059,32 +1059,13 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
 
 const TOP_SIZE = 10
 
-const updateTopValues = async (meetingId, meeting) => updateTopMeetings("topValues", meetingId, meeting, topValueInfo, topValueValue);
-const updateTopSpeeds = async (meetingId, meeting) => updateTopMeetings("topSpeeds", meetingId, meeting, topSpeedInfo, topSpeedValue);
-const updateTopDurations = async (meetingId, meeting) => updateTopMeetings("topDurations", meetingId, meeting, topDurationInfo, topDurationValue);
+const updateTopValues = async (meetingId, meeting) => updateTopMeetings("topValues", meetingId, meeting, topValueValue);
+const updateTopSpeeds = async (meetingId, meeting) => updateTopMeetings("topSpeeds", meetingId, meeting, topSpeedValue);
+const updateTopDurations = async (meetingId, meeting) => updateTopMeetings("topDurations", meetingId, meeting, topDurationValue);
 
 const topValueValue = (meeting) => meeting.speed.num * meeting.FX * meeting.duration;
 const topSpeedValue = (meeting) => meeting.speed.num * meeting.FX;
 const topDurationValue = (meeting) => meeting.duration;
-
-const topValueInfo = (meeting) => {
-  return {
-    duration: meeting.duration,
-    speed: meeting.speed,
-    FX: meeting.FX,
-  };
-}
-const topSpeedInfo = (meeting) => {
-  return {
-    speed: meeting.speed,
-    FX: meeting.FX,
-  };
-}
-const topDurationInfo = (meeting) => {
-  return {
-    duration: meeting.duration,
-  };
-}
 
 const getNamesForTopMeeting = async (T, meeting) => {
   const docRefA = db.collection("users").doc(meeting.A);
@@ -1098,31 +1079,35 @@ const getNamesForTopMeeting = async (T, meeting) => {
   const B = docB.get("name");
   return { A, B };
 }
-const addTopMeeting = async (T, colRef, meetingId, meeting, infoFn, valueFn, worst) => {
+const addTopMeeting = async (T, colRef, meetingId, meeting, valueFn, worst) => {
   console.log("addTopMeeting, meetingId", meetingId);
 
   if (worst) T.delete(worst);
 
   const names = await getNamesForTopMeeting(T, meeting);
   console.log("addTopMeeting, names", names);
-  const obj = topObj(meeting, names.A, names.B, infoFn, valueFn)
+  
+  const obj = topObj(meeting, names.A, names.B, valueFn)
   console.log("addTopMeeting, obj", obj);
+
   const docRefNewTopMeeting = colRef.doc(meetingId);
   return T.create(docRefNewTopMeeting, obj);
 };
-const topObj = (meeting, nameA, nameB, infoFn, valueFn) => {
+const topObj = (meeting, nameA, nameB, valueFn) => {
   return {
     A: meeting.A,
     B: meeting.B,
     nameA,
     nameB,
     ts: meeting.end,
-    info: infoFn(meeting),
+    FX: meeting.FX,
+    speed: meeting.speed,
+    duration: meeting.duration,
     value: valueFn(meeting),
   };
 }
 
-const updateTopMeetings = async (collection, meetingId, meeting, infoFn, valueFn) => {
+const updateTopMeetings = async (collection, meetingId, meeting, valueFn) => {
   console.log("updateTopMeetings, collection, meetingId", collection, meetingId);
 
   if (!meeting.settled) return;
@@ -1138,7 +1123,7 @@ const updateTopMeetings = async (collection, meetingId, meeting, infoFn, valueFn
 
     let worst = null;
     if (querySnapshot.size < TOP_SIZE) {
-      await addTopMeeting(T, colRef, meetingId, meeting, infoFn, valueFn, worst);
+      await addTopMeeting(T, colRef, meetingId, meeting, valueFn, worst);
       return true;
     }
 
@@ -1151,7 +1136,7 @@ const updateTopMeetings = async (collection, meetingId, meeting, infoFn, valueFn
       if (valueMeeting && value < valueMeeting) {
         worst = querySnapshot.docs[querySnapshot.size - 1].ref;
         console.log("new record, worst.id", worst.id);
-        await addTopMeeting(T, colRef, meetingId, meeting, infoFn, valueFn, worst);
+        await addTopMeeting(T, colRef, meetingId, meeting, valueFn, worst);
         return true;
       }
     }
