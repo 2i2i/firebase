@@ -517,7 +517,7 @@ const settleMeetingCalcEnergy = (
   amount,
   meeting
 ) => {
-  const maxEnergy = amount - 3 * MIN_TXN_FEE;
+  const maxEnergy = amount - (meeting.speed.assetId == 0 ? 3 * MIN_TXN_FEE : 0);
   console.log("maxEnergy", maxEnergy);
   if (maxEnergy !== meeting.energy.MAX) console.error("maxEnergy !== meeting.energy.MAX", maxEnergy, meeting.energy.MAX);
 
