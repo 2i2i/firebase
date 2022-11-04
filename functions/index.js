@@ -445,6 +445,7 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
   return Promise.all(promises);
 });
 
+// changes meeting
 const settleMeeting = async (docRef, meeting) => {
   console.log("settleMeeting, meeting", meeting);
 
@@ -466,11 +467,16 @@ const settleMeeting = async (docRef, meeting) => {
     settled: true,
     duration: meeting.duration,
   };
+  meeting.settled = true; // local change
   if (result) {
     updateObj["txns.unlock"] = result.txId;
+    meeting.txns.unlock = result.txId; // local change
     updateObj["energy.A"] = result.energyA;
+    meeting.energy.A = result.energyA; // local change
     updateObj["energy.CREATOR"] = result.energyCreator;
+    meeting.energy.CREATOR = result.energyCreator; // local change
     updateObj["energy.B"] = result.energyB;
+    meeting.energy.B = result.energyB; // local change
   }
   await docRef.update(updateObj); // not in parallel in case of early bugs
 
@@ -484,6 +490,7 @@ const settleMeeting = async (docRef, meeting) => {
 };
 
 const updateRedeemBoth = async (meeting) => {
+  console.log('updateRedeemBoth, meeting.txns.unlock', meeting.txns.unlock);
   if (!meeting.txns.unlock) return;
   const txInfo = await algorandIndexer.lookupTransactionByID(meeting.txns.unlock).do();
   const p1 = updateRedeem(txInfo, meeting.A, meeting.addrA, meeting.speed.assetId, meeting.energy.A);
@@ -965,8 +972,6 @@ const sendASA = async (algodclient, fromAccountAddr, toAccountAddr, signAccount,
       error: e,
     };
   }
-
-  return txId;
 };
 
 
