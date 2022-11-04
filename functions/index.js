@@ -601,12 +601,20 @@ const send2i2iCoins = async (meeting) => {
 }
 const send2i2iCoinsCore = async (amount, toAddr, uid) => {
   console.log('send2i2iCoinsCore, amount, toAddr, uid', amount, toAddr, uid);
-  const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+
+  if (!amount) return;
+
   const assetId = process.env.ASA_ID*1;
+
+  if (!toAddr) {
+    console.log('send2i2iCoinsCore !toAddr addRedeem');
+    return addRedeem(uid, assetId, amount);
+  }
 
   // is toAddr opted-in?
   // toAddr
-
+  
+  const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log('send2i2iCoinsCore before sendASA, assetId', assetId);
   const {txId, error} = await sendASA(algorandAlgod,
         process.env.CREATOR_ACCOUNT,
