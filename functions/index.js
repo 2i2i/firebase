@@ -198,7 +198,7 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     
     const txn = await findTxn(bidId, speed, uid, addrA);
 
-    const energyA = txn.amount - (speed.assetId == 0 ? 0 : 2 * MIN_TXN_FEE); // keep 2 fees
+    const energyA = txn.amount - (speed.assetId == 0 ? 2 * MIN_TXN_FEE : 0); // keep 2 fees
     const {txId, error} = await runUnlock(algorandAlgod, energyA, 0, addrA, addrA, speed.assetId);
     if (error) return error;
 
