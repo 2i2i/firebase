@@ -479,14 +479,13 @@ const settleMeeting = async (docRef, meeting) => {
     meeting.energy.B = result.energyB; // local change
   }
   await docRef.update(updateObj); // not in parallel in case of early bugs
+  
+  await updateRedeemBoth(meeting);
 
   const p1 = updateTopSpeeds(docRef.id, meeting);
   const p2 = updateTopDurations(docRef.id, meeting);
   const p3 = updateTopValues(docRef.id, meeting);
-
-  const p4 = updateRedeemBoth(meeting);
-
-  return Promise.all([p1, p2, p3, p4]);
+  return Promise.all([p1, p2, p3]);
 };
 
 const updateRedeemBoth = async (meeting) => {
@@ -1156,7 +1155,7 @@ const topObj = (meeting, nameA, nameB, valueFn) => {
 }
 
 const updateTopMeetings = async (collection, meetingId, meeting, valueFn) => {
-  console.log("updateTopMeetings, collection, meetingId", collection, meetingId);
+  console.log("updateTopMeetings, collection, meetingId, meeting.settled, meeting.speed.num, meeting.duration", collection, meetingId, meeting.settled, meeting.speed.num, meeting.duration);
 
   if (!meeting.settled) return;
   if (meeting.speed.num === 0) return;
@@ -1632,8 +1631,8 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 
 // TEST
 
-// exports.updateTopValuesTEST = functions.runWith(runWithObj).https.onCall(async (data, context) => {
-//   const meetingId = "15WmC6Zsw7cl8kGRxXKP";
+// exports.updateTopTEST = functions.runWith(runWithObj).https.onCall(async (data, context) => {
+//   const meetingId = "5dCYzQysjmal7HatShZ3";
 //   const doc = await db.collection("meetings").doc(meetingId).get();
 //   const meeting = doc.data();
 
@@ -1641,20 +1640,14 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 //   // meeting.speed = {assetId: 0, num: 1};
 //   // meeting.duration = 7;
 
-//   // return updateTopValues(meetingId, meeting);
+//   return updateTopValues(meetingId, meeting);
 //   // return updateTopSpeeds(meetingId, meeting);
-//   return updateTopDurations(meetingId, meeting);
+//   // return updateTopDurations(meetingId, meeting);
 // });
 
 // test({})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
-//   const txInfo = await algorandIndexer.lookupTransactionByID(txId).do();
-//   console.log('txInfo', txInfo);
-//   console.log('1', txInfo.transaction['inner-txns']);
-//   for (const t of txInfo.transaction['inner-txns']) {
-//     console.log('2', t['payment-transaction']);
-//     console.log('3', t['asset-transfer-transaction']);
-//     // receiver, amount
-//   }
+//   const meetingId = '';
+//   const meeting = await algorandIndexer.lookupTransactionByID(txId).do();
+//   await updateTopValues(meetingId, meeting);
 // });
