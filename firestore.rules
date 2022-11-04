@@ -268,6 +268,9 @@ service cloud.firestore {
 
     /////////////////////////
     // tops
+    match /topValues/{id} {
+      allow read: if request.auth != null;
+    }
     match /topSpeeds/{id} {
       allow read: if request.auth != null;
     }
