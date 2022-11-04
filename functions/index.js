@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:cancelBid,functions:cancelBid
+// firebase deploy --only functions:cancelBid,functions:meetingUpdated
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -486,8 +486,8 @@ const settleMeeting = async (docRef, meeting) => {
 const updateRedeemBoth = async (meeting) => {
   if (!meeting.txns.unlock) return;
   const txInfo = await algorandIndexer.lookupTransactionByID(meeting.txns.unlock).do();
-  const p1 = updateRedeem(txInfo, meeting.B, meeting.addrB, meeting.speed.assetId, meeting.energy.B);
-  const p2 = updateRedeem(txInfo, meeting.A, meeting.addrA, meeting.speed.assetId, meeting.energy.A);
+  const p1 = updateRedeem(txInfo, meeting.A, meeting.addrA, meeting.speed.assetId, meeting.energy.A);
+  const p2 = updateRedeem(txInfo, meeting.B, meeting.addrB, meeting.speed.assetId, meeting.energy.B);
   return Promise.all([p1, p2]);
 }
 const updateRedeem = async(txInfo, uid, targetAlgorand, assetId, amount) => {
@@ -706,16 +706,36 @@ const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = 
   console.log("runUnlock", energyA, energyB, addrA, addrB, assetId);
   const signerAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log("signerAccount.addr", signerAccount.addr);
+
+  const runA = 0 < energyA && addrA;
+  const runB = 0 < energyB && addrB;
+  if (!runA && !runB) return {
+    txId: null,
+    error: "nothing to unlock",
+  };
+
   const appArg0 = new TextEncoder().encode("UNLOCK");
-  const appArg1 = algosdk.encodeUint64(energyA);
-  const appArg2 = algosdk.encodeUint64(energyB);
-  const appArgs = [appArg0, appArg1, appArg2];
+  const appArgs = [appArg0];
+  const accounts = [];
+
+  if (runA) {
+    const appArgA = algosdk.encodeUint64(energyA);
+    appArgs.push(appArgA);
+    accounts.push(addrA);
+  }
+
+  if (runB) {
+    const appArgB = algosdk.encodeUint64(energyB);
+    appArgs.push(appArgB);
+    accounts.push(addrB);
+  }
+
   const suggestedParams = await algodclient.getTransactionParams().do();
   const unlockObj = {
     from: process.env.CREATOR_ACCOUNT,
     appIndex: Number(process.env.ALGORAND_SYSTEM_ID),
     appArgs,
-    accounts: [addrA, addrB],
+    accounts: accounts,
     suggestedParams,
   }
   if (assetId) unlockObj.foreignAssets = [assetId];
