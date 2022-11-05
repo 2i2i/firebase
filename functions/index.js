@@ -198,7 +198,7 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     
     const txn = await findTxn(bidId, speed, uid, addrA);
 
-    const energyA = txn.amount - (speed.assetId == 0 ? 2 * MIN_TXN_FEE : 0); // keep 2 fees
+    const energyA = txn.amount - (txn['tx-type'] === 'pay' ? 3 * MIN_TXN_FEE : 0); // keep 3 fees
     const {txId, error} = await runUnlock(algorandAlgod, energyA, 0, addrA, addrA, speed.assetId);
     if (error) return error;
 
@@ -453,9 +453,9 @@ const settleMeeting = async (docRef, meeting) => {
   if (meeting.speed.num !== 0) {
     const txn = await findTxn(meetingId, meeting.speed, meeting.A, meeting.addrA);
     if (meeting.speed.assetId === 0) {
-      result = await settleALGOMeeting(algorandAlgod, docRef.id, meeting, txn);
+      result = await settleALGOMeeting(algorandAlgod, meeting, txn);
     } else {
-      result = await settleASAMeeting(algorandAlgod, docRef.id, meeting, txn);
+      result = await settleASAMeeting(algorandAlgod, meeting, txn);
     }
 
     if (!result.error) await send2i2iCoins(meeting);
@@ -548,7 +548,6 @@ const settleMeetingCalcEnergy = (
 
 const settleALGOMeeting = async (
     algodclient,
-    meetingId,
     meeting,
     paymentTxn,
 ) => {
@@ -567,7 +566,6 @@ const settleALGOMeeting = async (
 
 const settleASAMeeting = async (
   algodclient,
-  meetingId,
   meeting,
   axferTxn,
 ) => {
