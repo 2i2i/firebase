@@ -198,7 +198,7 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     
     const txn = await findTxn(bidId, speed, uid, addrA);
 
-    const energyA = txn.amount - (txn['tx-type'] === 'pay' ? 3 * MIN_TXN_FEE : 0); // keep 3 fees
+    const energyA = txn.amount - (txn['tx-type'] === 'pay' ? 2 * MIN_TXN_FEE : 0); // give A unused coins (3-1=2)
     const {txId, error} = await runUnlock(algorandAlgod, energyA, 0, addrA, addrA, speed.assetId);
     if (error) return error;
 
@@ -552,6 +552,8 @@ const settleALGOMeeting = async (
     paymentTxn,
 ) => {
   const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(paymentTxn.amount, meeting);
+
+  if (energyB === 0) energyA += MIN_TXN_FEE; // give A unused coins
 
   const {txId, error} = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB);
 
