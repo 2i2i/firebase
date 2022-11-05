@@ -451,10 +451,11 @@ const settleMeeting = async (docRef, meeting) => {
 
   let result = null;
   if (meeting.speed.num !== 0) {
+    const txn = await findTxn(meetingId, meeting.speed, meeting.A, meeting.addrA);
     if (meeting.speed.assetId === 0) {
-      result = await settleALGOMeeting(algorandAlgod, docRef.id, meeting);
+      result = await settleALGOMeeting(algorandAlgod, docRef.id, meeting, txn);
     } else {
-      result = await settleASAMeeting(algorandAlgod, docRef.id, meeting);
+      result = await settleASAMeeting(algorandAlgod, docRef.id, meeting, txn);
     }
 
     if (!result.error) await send2i2iCoins(meeting);
@@ -549,9 +550,8 @@ const settleALGOMeeting = async (
     algodclient,
     meetingId,
     meeting,
+    paymentTxn,
 ) => {
-  const paymentTxn = await findTxn(meetingId, meeting.speed, meeting.A, meeting.addrA);
-
   const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(paymentTxn.amount, meeting);
 
   const {txId, error} = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB);
@@ -569,9 +569,8 @@ const settleASAMeeting = async (
   algodclient,
   meetingId,
   meeting,
+  axferTxn,
 ) => {
-  const axferTxn = await findTxn(meetingId, meeting.speed, meeting.A, meeting.addrA);
-
   const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(axferTxn.amount, meeting);
 
   const {txId, error} = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB, meeting.speed.assetId);
