@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:meetingUpdated,functions:meetingUpdated
+// firebase deploy --only functions:redeem,functions:meetingUpdated
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -649,8 +649,6 @@ const addRedeem = (uid, assetId, amount) => {
 
 // redeem({assetId: 78585497, addr: "addr"})
 exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context) => {
-
-  
   const uid = context.auth.uid;
   const assetId = data.assetId;
   const addr = data.addr;
@@ -668,7 +666,10 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
     if (!amount) return `uid=${uid}, assetId=${assetId} nothing to redeem`;
     
     // send coins
-    const {txId, error}  = await runRedeem(algorandAlgod, amount, addr, assetId);
+    let resultObj;
+    if (assetId === process.env.ASA_ID) resultObj = await run2i2iRedeem(algorandAlgod, amount, addr);
+    else resultObj = await runRedeem(algorandAlgod, amount, addr, assetId);
+    const {txId, error} = resultObj;
     console.log("redeem, txId, error", txId, error);
     if (error) return `${error}`;
 
@@ -683,13 +684,61 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
   });
 });
 
-const runRedeem = async (algodclient, amount, addr, assetId) => {
-  console.log("runRedeem", amount, addr, assetId);
+const run2i2iRedeem = async (algodclient, amount, addr) => {
+  console.log("run2i2iRedeem", amount, addr, process.env.ASA_ID);
+
   const signerAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log("signerAccount.addr", signerAccount.addr);
+  
+  const suggestedParams = await algodclient.getTransactionParams().do();
+  const txnObj = {
+    from: process.env.CREATOR_ACCOUNT,
+    to: addr,
+    amount: amount,
+    assetIndex: process.env.ASA_ID,
+    suggestedParams,
+  }
+
+  const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(txnObj);
+  console.log("run2i2iRedeem, txn");
+
+  // sign
+  const stateTxnSigned = txn.signTxn(signerAccount.sk);
+  console.log("run2i2iRedeem, signed");
+
+  // send
+  try {
+    const {txId} = await algodclient.sendRawTransaction([stateTxnSigned]).do();
+    console.log("run2i2iRedeem, sent", txId);
+
+    // confirm
+    const timeout = 5;
+    await waitForConfirmation(algodclient, txId, timeout);
+    console.log("run2i2iRedeem, confirmed");
+
+    return {
+      txId,
+      error: null,
+    };
+  } catch (e) {
+    console.log("error", e);
+    return {
+      txId: null,
+      error: e,
+    };
+  }
+};
+
+const runRedeem = async (algodclient, amount, addr, assetId) => {
+  console.log("runRedeem", amount, addr, assetId);
+
+  const signerAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+  console.log("signerAccount.addr", signerAccount.addr);
+  
   const appArg0 = new TextEncoder().encode("REDEEM");
   const appArg1 = algosdk.encodeUint64(amount);
   const appArgs = [appArg0, appArg1];
+  
   const suggestedParams = await algodclient.getTransactionParams().do();
   const txnObj = {
     from: process.env.CREATOR_ACCOUNT,
