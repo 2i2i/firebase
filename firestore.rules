@@ -34,6 +34,11 @@ service cloud.firestore {
       allow read: if request.auth != null;
     }
 
+    // stats
+    match /system/stats {
+      allow read: if request.auth != null;
+    }
+
     // collectionGroup for sign in with algorand_accounts
     match /{path=**}/algorand_accounts/{document} {
       allow read: if true;
