@@ -451,7 +451,7 @@ const settleMeeting = async (docRef, meeting) => {
 
   let result = null;
   if (meeting.speed.num !== 0) {
-    const txn = await findTxn(meetingId, meeting.speed, meeting.A, meeting.addrA);
+    const txn = await findTxn(docRef.id, meeting.speed, meeting.A, meeting.addrA);
     if (meeting.speed.assetId === 0) {
       result = await settleALGOMeeting(algorandAlgod, meeting, txn);
     } else {
