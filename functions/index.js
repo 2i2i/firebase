@@ -620,6 +620,7 @@ const send2i2iCoinsCore = async (amount, toAddr, uid) => {
   // toAddr
   
   const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
+
   console.log('send2i2iCoinsCore before sendASA, assetId', assetId);
   const {txId, error} = await sendASA(algorandAlgod,
         process.env.CREATOR_ACCOUNT,
