@@ -36,7 +36,7 @@ service cloud.firestore {
 
     // stats
     match /system/stats {
-      allow read: if request.auth != null;
+      allow read: if true;
     }
 
     // collectionGroup for sign in with algorand_accounts
