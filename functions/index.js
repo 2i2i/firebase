@@ -449,9 +449,11 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
 const settleMeeting = async (docRef, meeting) => {
   console.log("settleMeeting, meeting", meeting);
 
+  const meetingId = docRef.id;
+
   let result = null;
   if (meeting.speed.num !== 0) {
-    const txn = await findTxn(docRef.id, meeting.speed, meeting.A, meeting.addrA);
+    const txn = await findTxn(meetingId, meeting.speed, meeting.A, meeting.addrA);
     if (meeting.speed.assetId === 0) {
       result = await settleALGOMeeting(algorandAlgod, meeting, txn);
     } else {
@@ -483,9 +485,9 @@ const settleMeeting = async (docRef, meeting) => {
   
   await updateRedeemBoth(meeting);
 
-  const p1 = updateTopSpeeds(docRef.id, meeting);
-  const p2 = updateTopDurations(docRef.id, meeting);
-  const p3 = updateTopValues(docRef.id, meeting);
+  const p1 = updateTopSpeeds(meetingId, meeting);
+  const p2 = updateTopDurations(meetingId, meeting);
+  const p3 = updateTopValues(meetingId, meeting);
   return Promise.all([p1, p2, p3]);
 };
 
