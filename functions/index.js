@@ -667,8 +667,14 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
     
     // send coins
     let resultObj;
-    if (assetId === process.env.ASA_ID) resultObj = await run2i2iRedeem(algorandAlgod, amount, addr);
-    else resultObj = await runRedeem(algorandAlgod, amount, addr, assetId);
+    console.log("redeem, assetId, process.env.ASA_ID, assetId === process.env.ASA_ID", assetId, process.env.ASA_ID*1, assetId === process.env.ASA_ID*1);
+    if (assetId === process.env.ASA_ID*1) 
+    {
+      resultObj = await run2i2iRedeem(algorandAlgod, amount, addr);
+    }
+    else {
+      resultObj = await runRedeem(algorandAlgod, amount, addr, assetId);
+    }
     const {txId, error} = resultObj;
     console.log("redeem, txId, error", txId, error);
     if (error) return `${error}`;
@@ -685,7 +691,7 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
 });
 
 const run2i2iRedeem = async (algodclient, amount, addr) => {
-  console.log("run2i2iRedeem", amount, addr, process.env.ASA_ID);
+  console.log("run2i2iRedeem", amount, addr, process.env.ASA_ID*1);
 
   const signerAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log("signerAccount.addr", signerAccount.addr);
@@ -695,7 +701,7 @@ const run2i2iRedeem = async (algodclient, amount, addr) => {
     from: process.env.CREATOR_ACCOUNT,
     to: addr,
     amount: amount,
-    assetIndex: process.env.ASA_ID,
+    assetIndex: process.env.ASA_ID*1,
     suggestedParams,
   }
 
