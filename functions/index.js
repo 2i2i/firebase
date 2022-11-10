@@ -1650,3 +1650,14 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 //   const meeting = await algorandIndexer.lookupTransactionByID(txId).do();
 //   await updateTopValues(meetingId, meeting);
 // });
+
+// STATS
+
+// exports.docsPerCollecltion = functions.https.onCall(async (data, context) => {
+//   const colRefs = await db.listCollections();
+//   colRefs.forEach(async (colRef) => {
+//     const q = await colRef.get();
+//     const s = q.size;
+//     console.log(`${colRef.id} - ${s}`);
+//   });
+// });
