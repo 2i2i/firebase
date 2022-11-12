@@ -488,8 +488,11 @@ const settleMeeting = async (docRef, meeting) => {
   const p1 = updateTopSpeeds(meetingId, meeting);
   const p2 = updateTopDurations(meetingId, meeting);
   const p3 = updateTopValues(meetingId, meeting);
-  return Promise.all([p1, p2, p3]);
+  const p4 = updateNumMeetings();
+  return Promise.all([p1, p2, p3, p4]);
 };
+
+const updateNumMeetings = async () => db.collection("system").doc("stats").update({numMeetings: FieldValue.increment(1)});
 
 const updateRedeemBoth = async (meeting) => {
   console.log('updateRedeemBoth, meeting.txns.unlock', meeting.txns.unlock);
@@ -1704,9 +1707,7 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 
 // test({})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   const meetingId = '';
-//   const meeting = await algorandIndexer.lookupTransactionByID(txId).do();
-//   await updateTopValues(meetingId, meeting);
+//   return updateNumMeetings();
 // });
 
 // STATS
