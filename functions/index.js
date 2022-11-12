@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:redeem,functions:meetingUpdated
+// firebase deploy --only functions:meetingUpdated,functions:meetingUpdated
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
