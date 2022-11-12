@@ -160,10 +160,11 @@ exports.createToken = functions.https.onCall(async (data, context) => {
 //   });
 // });
 
-const findTxn = async (id, speed, A, addrA) => {
-  console.log("findTxn, id, speed, A, addrA", id, speed, A, addrA);
-  const note = Buffer.from(id + "." + speed.num + "." + speed.assetId).toString("base64");
-  console.log("note", note);
+const findTxn = async (meetingId, speed, A, addrA) => {
+  console.log("findTxn, id, speed, A, addrA", meetingId, speed, A, addrA);
+  const noteString = meetingId + "." + speed.num + "." + speed.assetId;
+  const note = Buffer.from(noteString).toString("base64");
+  console.log("noteString, note", noteString, note);
   const txType = speed.assetId === 0 ? "pay" : "axfer";
   console.log("txType", txType);
   const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType(txType).assetID(speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
@@ -1707,7 +1708,12 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 
 // test({})
 // exports.test = functions.https.onCall(async (data, context) => {
-//   return updateNumMeetings();
+//   const speed = {assetId: 23};
+//   const note = "WDl6bHZvWWlGa2hNVzQ2dVVwYlQuMS43NTMxMzc3MTk=";
+//   const txType = speed.assetId === 0 ? "pay" : "axfer";
+//   const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
+//   // const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType(txType).assetID(speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
+//   console.log("lookup.transactions.length", lookup.transactions.length);
 // });
 
 // STATS
