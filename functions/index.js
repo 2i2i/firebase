@@ -6,7 +6,7 @@
 
 // firebase use
 // firebase functions:shell
-// firebase deploy --only functions:meetingUpdated,functions:meetingUpdated
+// firebase deploy --only functions:meetingCreated,functions:bidAdded
 // ./functions/node_modules/eslint/bin/eslint.js functions --fix
 // firebase emulators:start
 
@@ -26,7 +26,7 @@ admin.initializeApp(
   }
 );
 const db = admin.firestore();
-// const messaging = admin.messaging();
+const messaging = admin.messaging();
 const { getAuth } = require("firebase-admin/auth");
 const { FieldValue, Timestamp } = require("firebase-admin/firestore");
 
@@ -220,45 +220,71 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
   });
 });
 
+// notifications
+const sendNotification = async (tokenId, token, data) => {
+
+  console.log("sendNotification, token, data", token, data);
+
+  const message = {};
+
+  if (token.operatingSystem === "ios" || data.type !== "call") {
+    message.notification = {
+      title: data.title,
+      body: data.body,
+    };
+    // message.registration_ids = [tokenId];
+    message.token = tokenId;
+    // message.mutable_content = true;
+    // message.content_available = true;
+    // message.priority = "high";
+    message.data = data;
+  }
+
+  console.log("message", message);
+
+  return messaging.send(message)
+      .then((response) => {
+        // response is a message ID string.
+        console.log("successfully sent message:", response);
+        return response;
+      })
+      .catch((error) => {
+        console.log("error sending message:", error);
+        return null;
+      });
+}
+
 // https://imgur.com/Jwih3Ac
 // https://imgur.com/QEzobjq
-// exports.bidAdded = functions.runWith(runWithObj).firestore
-//     .document("users/{userId}/bidInsPublic/{bidId}")
-//     .onCreate(async (change, context) => {
-//       const userId = context.params.userId;
-//       const docRefToken = db.collection("tokens").doc(userId);
-//       const docToken = await docRefToken.get();
-//       if (!docToken.exists) return; // no token
+exports.bidAdded = functions.runWith(runWithObj).firestore
+    .document("users/{uid}/bidInsPublic/{bidId}")
+    .onCreate(async (change, context) => {
 
-//       const token = docToken.get("token");
+      const data = {
+        type: 'notcall',
+        title: "2i2i",
+        body: "someone wants to talk to you",
+      };
 
-//       const message = {
-//         notification: {
-//           title: "2i2i",
-//           body: "Someone wants to meet you",
-//           image: process.env.NOTIFICATON_IMAGE,
-//         },
-//         webpush: {
-//           headers: {
-//             Urgency: "high",
-//           },
-//           fcm_options: {
-//             link: `https://${process.env.DOMAIN}/myHangout`,
-//           },
-//         },
-//         token: token,
-//       };
+      const uid = context.params.uid;
 
-//       // DEBUG
-//       return messaging.send(message)
-//           .then((response) => {
-//             // Response is a message ID string.
-//             console.log("Successfully sent message:", response);
-//           })
-//           .catch((error) => {
-//             console.log("Error sending message:", error);
-//           });
-//     });
+      console.log("bidAdded, uid", uid);
+
+      const colRefTokens = db.collection("users").doc(uid).collection("tokens");
+      const querySnapshot = await colRefTokens.get();
+      console.log("bidAdded, querySnapshot.size", querySnapshot.size);
+      for (const doc of querySnapshot.docs) {
+        const token = doc.data();
+        console.log("bidAdded, token, doc.id", token, doc.id);
+        const result = await sendNotification(doc.id, token, data);
+        console.log("bidAdded, result", result);
+
+        // remove bad token
+        // if (!result) {
+        //   await doc.ref.delete();
+        // }
+      }
+    });
 
 // updateDevices({});
 // exports.updateDevices = functions.runWith(runWithObj).https.onCall(async (data, context) => {
@@ -307,52 +333,32 @@ exports.ratingAdded = functions.runWith(runWithObj).firestore
       });
     });
 
-// const notifyA = async (A) => {
-//   const docRefToken = db.collection("tokens").doc(A);
-//   const docToken = await docRefToken.get();
-//   console.log("notifyA", docToken);
-//   if (!docToken.exists) return; // no token
+const notifyA = async (meetingId, A) => {
+  const userDocRef = db.collection("users").doc(A);
+  const userDoc = await userDocRef.get();
+  const name = userDoc.get("name");
 
-//   const token = docToken.get("token");
+  const data = {
+    type: 'CALL',
+    route: '/lock',
+    title: name,
+    body: "2i2i incoming",
+    meetingId,
+    meetingData: {},
+  };
 
-//   const message = {
-//     "to": token,
-//     "notification": {
-//       title: "2i2i",
-//       body: "The Host is calling you",
-//     },
-//     "mutable_content": true,
-//     "content_available": true,
-//     "content-available": true,
-//     "priority": "high",
-//     "data": {
-//       title: "2i2i",
-//       body: "The Host is calling you",
-//       imageUrl: process.env.NOTIFICATON_IMAGE,
-//       type: "Call",
-//     },
-//     "webpush": {
-//       headers: {
-//         Urgency: "high",
-//       },
-//       fcm_options: {
-//         link: `https://${process.env.DOMAIN}`,
-//       },
-//     },
-//     // "token": token,
-//   };
-
-//   // DEBUG
-//   console.log("notifyA send");
-//   return messaging.send(message)
-//       .then((response) => {
-//         // Response is a message ID string.
-//         console.log("Successfully sent message:", response);
-//       })
-//       .catch((error) => {
-//         console.log("Error sending message:", error);
-//       });
-// };
+  const colRefTokens = db.collection("users").doc(A).collection("tokens");
+  const querySnapshot = await colRefTokens.get();
+  for (const doc of querySnapshot.docs) {
+    const token = doc.data();
+    const result = await sendNotification(doc.id, token, data);
+    
+    // remove bad token
+    // if (!result) {
+    //   await doc.ref.delete();
+    // }
+  }
+};
 exports.meetingCreated = functions.runWith(runWithObj).firestore
     .document("meetings/{meetingId}")
     .onCreate(async (change, context) => {
@@ -378,7 +384,7 @@ exports.meetingCreated = functions.runWith(runWithObj).firestore
         console.log("meetingUpdated, new loungeHistory");
       });
 
-      // const p2 = notifyA(meeting.A);
+      // const p2 = notifyA(meetingId, meeting.A);
 
       // return Promise.all([p1, p2]);
       return p1;
@@ -1707,14 +1713,18 @@ exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInter
 // });
 
 // test({})
-// exports.test = functions.https.onCall(async (data, context) => {
-//   const speed = {assetId: 23};
-//   const note = "WDl6bHZvWWlGa2hNVzQ2dVVwYlQuMS43NTMxMzc3MTk=";
-//   const txType = speed.assetId === 0 ? "pay" : "axfer";
-//   const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
-//   // const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType(txType).assetID(speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
-//   console.log("lookup.transactions.length", lookup.transactions.length);
-// });
+exports.test = functions.https.onCall(async (data, context) => {
+  const docRef = db.doc('/users/Zl3Ak474NRhgSOFJ6Tk6z2ppCz23/tokens/euNK90BsSEe8EjPHcawMAQ:APA91bHFdOP94_dvbdhvKgeKSdemBK_Q0M6RVODqchR7Ml-I0QeLXf-i1wVMcWhzoNHh53_Helw4DT9HxDFsY-GmmA_gI4fzUwm_A9gIZN4B1A-0_UVbN7fh_TweLPnPZm9kvKNoLiDz');
+  const doc = await docRef.get();
+  const token = doc.data();
+  console.log(token);
+  const d = {
+    type: 'notcall',
+    title: "2i2i",
+    body: "someone wants to talk to you",
+  };
+  await sendNotification(token.value, token, d);
+});
 
 // STATS
 
