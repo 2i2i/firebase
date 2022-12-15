@@ -18,19 +18,20 @@ const algosdk = require("algosdk");
 // algosdk.algosToMicroalgos(1);
 
 // FX is ALGO per speed.assetId
-
+const axios = require("axios");
 const admin = require("firebase-admin");
 admin.initializeApp(
-  {
-      "serviceAccountId": process.env.SERVICE_ACCOUNT_ID
-  }
+    {
+      "serviceAccountId": process.env.SERVICE_ACCOUNT_ID,
+    },
 );
 const db = admin.firestore();
 // const messaging = admin.messaging();
-const { getAuth } = require("firebase-admin/auth");
-const { FieldValue, Timestamp } = require("firebase-admin/firestore");
+const {getAuth} = require("firebase-admin/auth");
+const {FieldValue, Timestamp} = require("firebase-admin/firestore");
 
-const https = require('https');
+const https = require("https");
+// const http = require("http");
 
 const algorandAlgod = new algosdk.Algodv2(
     "",
@@ -58,48 +59,48 @@ const runWithObj = {
 };
 
 const getUrl = async (url, callback) => {
-
   console.log("url", url);
 
   const request = https.request(url, (response) => {
-      const data = [];
+    const data = [];
 
-      response.on('data', (chunk) => {
-        data.push(chunk);
-        // console.log("chunk, data", chunk, data);
-      });
-    
-      response.on('end', () => {
-        // console.log("data", data);
-          body = JSON.parse(Buffer.concat(data).toString());
-          // console.log("body", body);
-          return callback(body);
-      });
-  })
-    
-  request.on('error', (error) => {
-      console.log('An error', error);
+    response.on("data", (chunk) => {
+      data.push(chunk);
+      // console.log("chunk, data", chunk, data);
+    });
+
+    response.on("end", () => {
+      // console.log("data", data);
+      const body = JSON.parse(Buffer.concat(data).toString());
+      // console.log("body", body);
+      return callback(body);
+    });
   });
-    
+
+  request.on("error", (error) => {
+    console.log("An error", error);
+  });
+
   request.end();
-}
+};
 
 // runs every minute
 const getFX = async (assetId, docRef) => {
+  // eslint-disable-next-line max-len
   const url = `https://free-api.vestige.fi/asset/${assetId}/price?currency=ALGO`;
   // const url = `https://free-api.vestige.fi/asset/31566704/price?currency=ALGO`; // debug
   console.log("url", url);
-  
+
   const callback = (data) => {
     if (data) {
       const d = new Date(0); // The 0 there is the key, which sets the date to the epoch
       d.setUTCSeconds(data.timestamp);
       return docRef.update({ts: d, value: data.price});
     }
-  }
+  };
 
   return getUrl(url, callback);
-}
+};
 exports.updateFX = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
   const colRef = db.collection("FX");
   const querySnapshot = await colRef.get();
@@ -115,17 +116,17 @@ exports.updateFX = functions.runWith(runWithObj).pubsub.schedule("* * * * *").on
 
 // createToken({token: 'token'})
 exports.createToken = functions.https.onCall(async (data, context) => {
-  let id = data.token;
+  const id = data.token;
 
   let result;
   try {
-      result = await getAuth().createCustomToken(id);
-      functions.logger.info("Custom token for " + id + " is " + result);
+    result = await getAuth().createCustomToken(id);
+    functions.logger.info("Custom token for " + id + " is " + result);
   } catch (e) {
-      result = 'Error ' + e.toString();
-      functions.logger.info("Custom token for " + id + " Have " + result);
+    result = "Error " + e.toString();
+    functions.logger.info("Custom token for " + id + " Have " + result);
   }
-  return {'result': result};
+  return {"result": result};
 });
 
 // exports.userCreated = functions.runWith(runWithObj).auth.user().onCreate((user) => {
@@ -170,19 +171,19 @@ const findTxn = async (meetingId, speed, A, addrA) => {
   const lookup = await algorandIndexer.lookupAccountTransactions(process.env.ALGORAND_SYSTEM_ACCOUNT).txType(txType).assetID(speed.assetId).notePrefix(note).minRound(process.env.ALGORAND_MIN_ROUND).do();
   console.log("lookup.transactions.length", lookup.transactions.length);
 
-  if (lookup.transactions.length !== 1) throw("lookup.transactions.length !== 1"); // there should exactly one lock txn for this bid
+  if (lookup.transactions.length !== 1) throw ("lookup.transactions.length !== 1"); // there should exactly one lock txn for this bid
   const txn = lookup.transactions[0];
   const sender = txn.sender;
   console.log("sender", sender, A, sender === addrA);
-  if (sender !== addrA) throw("sender !== addrA"); // pay back to same account only
+  if (sender !== addrA) throw ("sender !== addrA"); // pay back to same account only
   console.log("txn", txn);
   const innerTxn = speed.assetId == 0 ? txn["payment-transaction"] : txn["asset-transfer-transaction"];
   const receiver = innerTxn.receiver;
   console.log("receiver", receiver, receiver === process.env.ALGORAND_SYSTEM_ACCOUNT);
-  if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) throw("receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT");
+  if (receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT) throw ("receiver !== process.env.ALGORAND_SYSTEM_ACCOUNT");
 
   return innerTxn;
-}
+};
 
 exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, context) => {
   const uid = context.auth.uid;
@@ -196,10 +197,10 @@ exports.cancelBid = functions.runWith(runWithObj).https.onCall(async (data, cont
     const docBidOut = await T.get(docRefBidOut);
     const speed = docBidOut.get("speed");
     const addrA = docBidOut.get("addrA");
-    
+
     const txn = await findTxn(bidId, speed, uid, addrA);
 
-    const energyA = txn.amount - (txn['tx-type'] === 'pay' ? 2 * MIN_TXN_FEE : 0); // give A unused coins (3-1=2)
+    const energyA = txn.amount - (txn["tx-type"] === "pay" ? 2 * MIN_TXN_FEE : 0); // give A unused coins (3-1=2)
     const {txId, error} = await runUnlock(algorandAlgod, energyA, 0, addrA, addrA, speed.assetId);
     if (error) return error;
 
@@ -393,7 +394,7 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
   if (oldMeeting.status === newMeeting.status) return 0;
 
   if ((newMeeting.status === "RECEIVED_REMOTE_A" && oldMeeting.status == "RECEIVED_REMOTE_B") ||
-           newMeeting.status === "RECEIVED_REMOTE_B" && oldMeeting.status == "RECEIVED_REMOTE_A") {
+        newMeeting.status === "RECEIVED_REMOTE_B" && oldMeeting.status == "RECEIVED_REMOTE_A") {
     // start: earlier of RECEIVED_REMOTE_A/B
     const start = FieldValue.serverTimestamp();
     let statusHistoryTS = null;
@@ -419,7 +420,7 @@ exports.meetingUpdated = functions.runWith(runWithObj).firestore.document("meeti
 
   if (newMeeting.status === "END_END") {
     newMeeting.duration = newMeeting.start !== null ? newMeeting.end.seconds - newMeeting.start.seconds : 0;
-  // console.log("meetingUpdated, newMeeting.duration", newMeeting.start, newMeeting.end.seconds, newMeeting.start.seconds, newMeeting.duration);
+    // console.log("meetingUpdated, newMeeting.duration", newMeeting.start, newMeeting.end.seconds, newMeeting.start.seconds, newMeeting.duration);
 
     return settleMeeting(change.after.ref, newMeeting);
   }
@@ -483,7 +484,7 @@ const settleMeeting = async (docRef, meeting) => {
     meeting.energy.B = result.energyB; // local change
   }
   await docRef.update(updateObj); // not in parallel in case of early bugs
-  
+
   await updateRedeemBoth(meeting);
 
   const p1 = updateTopSpeeds(meetingId, meeting);
@@ -496,23 +497,23 @@ const settleMeeting = async (docRef, meeting) => {
 const updateNumMeetings = async () => db.collection("system").doc("stats").update({numMeetings: FieldValue.increment(1)});
 
 const updateRedeemBoth = async (meeting) => {
-  console.log('updateRedeemBoth, meeting.txns.unlock', meeting.txns.unlock);
+  console.log("updateRedeemBoth, meeting.txns.unlock", meeting.txns.unlock);
   if (!meeting.txns.unlock) return;
   const txInfo = await algorandIndexer.lookupTransactionByID(meeting.txns.unlock).do();
   const p1 = updateRedeem(txInfo, meeting.A, meeting.addrA, meeting.speed.assetId, meeting.energy.A);
   const p2 = updateRedeem(txInfo, meeting.B, meeting.addrB, meeting.speed.assetId, meeting.energy.B);
   return Promise.all([p1, p2]);
-}
-const updateRedeem = async(txInfo, uid, targetAlgorand, assetId, amount) => {
+};
+const updateRedeem = async (txInfo, uid, targetAlgorand, assetId, amount) => {
   // const txId = 'ZM3DT25HHVEBA3XSGHXPSERRZQD5XMJCA67OZCPKUWDJGVLDRFQA';
-  
-  console.log('txInfo, uid, targetAlgorand, assetId, amount', uid, targetAlgorand, assetId, amount);
-  console.log('1', txInfo.transaction['inner-txns']);
+
+  console.log("txInfo, uid, targetAlgorand, assetId, amount", uid, targetAlgorand, assetId, amount);
+  console.log("1", txInfo.transaction["inner-txns"]);
 
   let redeem = true;
-  for (const t of txInfo.transaction['inner-txns'] ?? []) {
-    const receiver = assetId === 0 ? t['payment-transaction']?.receiver : t['asset-transfer-transaction']?.receiver;
-    console.log('receiver', receiver);
+  for (const t of txInfo.transaction["inner-txns"] ?? []) {
+    const receiver = assetId === 0 ? t["payment-transaction"]?.receiver : t["asset-transfer-transaction"]?.receiver;
+    console.log("receiver", receiver);
     // console.log('2', t['payment-transaction']);
     // console.log('3', t['asset-transfer-transaction']);
     // receiver, amount
@@ -524,11 +525,11 @@ const updateRedeem = async(txInfo, uid, targetAlgorand, assetId, amount) => {
   if (!redeem) return;
 
   return addRedeem(uid, assetId, amount);
-}
+};
 
 const settleMeetingCalcEnergy = (
-  amount,
-  meeting
+    amount,
+    meeting,
 ) => {
   const maxEnergy = amount - (meeting.speed.assetId == 0 ? 3 * MIN_TXN_FEE : 0);
   console.log("maxEnergy", maxEnergy);
@@ -550,14 +551,14 @@ const settleMeetingCalcEnergy = (
     energyCreator,
     energyB,
   };
-}
+};
 
 const settleALGOMeeting = async (
     algodclient,
     meeting,
     paymentTxn,
 ) => {
-  const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(paymentTxn.amount, meeting);
+  let {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(paymentTxn.amount, meeting);
 
   if (energyB === 0) energyA += MIN_TXN_FEE; // give A unused coins
 
@@ -573,13 +574,16 @@ const settleALGOMeeting = async (
 };
 
 const settleASAMeeting = async (
-  algodclient,
-  meeting,
-  axferTxn,
+    algodclient,
+    meeting,
+    axferTxn,
 ) => {
   const {energyA, energyCreator, energyB} = settleMeetingCalcEnergy(axferTxn.amount, meeting);
 
-  const {txId, error} = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB, meeting.speed.assetId);
+  const {
+    txId,
+    error,
+  } = await runUnlock(algodclient, energyA, energyB, meeting.addrA, meeting.addrB, meeting.speed.assetId);
 
   return {
     txId,
@@ -608,51 +612,51 @@ const send2i2iCoins = async (meeting) => {
   const perMeeting = 1; // 92233720; // 0.5*0.01*10^(-9)*(2^64-1);
   const amount = perMeeting + partOfEnergy;
   await send2i2iCoinsCore(amount, meeting.addrA, meeting.A);
-  await  send2i2iCoinsCore(amount, meeting.addrB, meeting.B);
-}
+  await send2i2iCoinsCore(amount, meeting.addrB, meeting.B);
+};
 const send2i2iCoinsCore = async (amount, toAddr, uid) => {
-  console.log('send2i2iCoinsCore, amount, toAddr, uid', amount, toAddr, uid);
+  console.log("send2i2iCoinsCore, amount, toAddr, uid", amount, toAddr, uid);
 
   if (!amount) return;
 
-  const assetId = process.env.ASA_ID*1;
+  const assetId = process.env.ASA_ID * 1;
 
   if (!toAddr) {
-    console.log('send2i2iCoinsCore !toAddr addRedeem');
+    console.log("send2i2iCoinsCore !toAddr addRedeem");
     return addRedeem(uid, assetId, amount);
   }
 
   // is toAddr opted-in?
   // toAddr
-  
+
   const signAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
 
-  console.log('send2i2iCoinsCore before sendASA, assetId', assetId);
+  console.log("send2i2iCoinsCore before sendASA, assetId", assetId);
   const {txId, error} = await sendASA(algorandAlgod,
-        process.env.CREATOR_ACCOUNT,
-        toAddr,
-        signAccount,
-        amount,
-        assetId,
-        );
+      process.env.CREATOR_ACCOUNT,
+      toAddr,
+      signAccount,
+      amount,
+      assetId,
+  );
 
   if (error) {
-    console.log('send2i2iCoinsCore before addRedeem');
+    console.log("send2i2iCoinsCore before addRedeem");
     return addRedeem(uid, assetId, amount);
   }
 
   return txId;
-}
+};
 
 const addRedeem = (uid, assetId, amount) => {
-  console.log('addRedeem, uid, assetId, amount', uid, assetId, amount);
+  console.log("addRedeem, uid, assetId, amount", uid, assetId, amount);
   const docRef = db.collection("redeem").doc(uid);
   return docRef.set({
     // FieldValue.increment(): works if key does not exist yet:
     // https://firebase.google.com/docs/firestore/manage-data/add-data#increment_a_numeric_value
     [assetId]: FieldValue.increment(amount),
   }, {merge: true});
-}
+};
 
 // redeem({assetId: 78585497, addr: "addr"})
 exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context) => {
@@ -671,15 +675,13 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
     console.log("redeem, amount", amount);
 
     if (!amount) return `uid=${uid}, assetId=${assetId} nothing to redeem`;
-    
+
     // send coins
     let resultObj;
-    console.log("redeem, assetId, process.env.ASA_ID, assetId === process.env.ASA_ID", assetId, process.env.ASA_ID*1, assetId === process.env.ASA_ID*1);
-    if (assetId === process.env.ASA_ID*1) 
-    {
+    console.log("redeem, assetId, process.env.ASA_ID, assetId === process.env.ASA_ID", assetId, process.env.ASA_ID * 1, assetId === process.env.ASA_ID * 1);
+    if (assetId === process.env.ASA_ID * 1) {
       resultObj = await run2i2iRedeem(algorandAlgod, amount, addr);
-    }
-    else {
+    } else {
       resultObj = await runRedeem(algorandAlgod, amount, addr, assetId);
     }
     const {txId, error} = resultObj;
@@ -698,19 +700,19 @@ exports.redeem = functions.runWith(runWithObj).https.onCall(async (data, context
 });
 
 const run2i2iRedeem = async (algodclient, amount, addr) => {
-  console.log("run2i2iRedeem", amount, addr, process.env.ASA_ID*1);
+  console.log("run2i2iRedeem", amount, addr, process.env.ASA_ID * 1);
 
   const signerAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log("signerAccount.addr", signerAccount.addr);
-  
+
   const suggestedParams = await algodclient.getTransactionParams().do();
   const txnObj = {
     from: process.env.CREATOR_ACCOUNT,
     to: addr,
     amount: amount,
-    assetIndex: process.env.ASA_ID*1,
+    assetIndex: process.env.ASA_ID * 1,
     suggestedParams,
-  }
+  };
 
   const txn = algosdk.makeAssetTransferTxnWithSuggestedParamsFromObject(txnObj);
   console.log("run2i2iRedeem, txn");
@@ -747,11 +749,11 @@ const runRedeem = async (algodclient, amount, addr, assetId) => {
 
   const signerAccount = algosdk.mnemonicToSecretKey(process.env.SYSTEM_PK);
   console.log("signerAccount.addr", signerAccount.addr);
-  
+
   const appArg0 = new TextEncoder().encode("REDEEM");
   const appArg1 = algosdk.encodeUint64(amount);
   const appArgs = [appArg0, appArg1];
-  
+
   const suggestedParams = await algodclient.getTransactionParams().do();
   const txnObj = {
     from: process.env.CREATOR_ACCOUNT,
@@ -759,7 +761,7 @@ const runRedeem = async (algodclient, amount, addr, assetId) => {
     appArgs,
     accounts: [addr],
     suggestedParams,
-  }
+  };
   if (assetId !== 0) txnObj.foreignAssets = [assetId];
 
   const txn = algosdk.makeApplicationNoOpTxnFromObject(txnObj);
@@ -799,10 +801,12 @@ const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = 
 
   const runA = 0 < energyA && addrA;
   const runB = 0 < energyB && addrB;
-  if (!runA && !runB) return {
-    txId: null,
-    error: "nothing to unlock",
-  };
+  if (!runA && !runB) {
+    return {
+      txId: null,
+      error: "nothing to unlock",
+    };
+  }
 
   const appArg0 = new TextEncoder().encode("UNLOCK");
   const appArgs = [appArg0];
@@ -827,7 +831,7 @@ const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = 
     appArgs,
     accounts: accounts,
     suggestedParams,
-  }
+  };
   if (assetId) unlockObj.foreignAssets = [assetId];
 
   const unlockTxn = algosdk.makeApplicationNoOpTxnFromObject(unlockObj);
@@ -862,7 +866,7 @@ const runUnlock = async (algodclient, energyA, energyB, addrA, addrB, assetId = 
 
 // every minute
 const disconnectMeeting = async (meetingId) => {
-  console.log('disconnectMeeting, meetingId', meetingId);
+  console.log("disconnectMeeting, meetingId", meetingId);
 
   const meetingObj = {
     status: "END_DISCONNECT",
@@ -893,11 +897,11 @@ const disconnectIfNeeded = async (queryDocSnapshotUser, ps) => {
     const p = disconnectMeeting(meetingId);
     ps.push(p);
   }
-}
+};
 exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun((context) => {
   const T = new Date();
   T.setSeconds(T.getSeconds() - 10);
-  console.log('checkUserStatus, T', T);
+  console.log("checkUserStatus, T", T);
 
   const usersColRef = db.collection("users");
   const ps = [];
@@ -905,19 +909,18 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   // not OFFLINE, both HBs old => OFFLINE
   const queryRefForOnline = usersColRef.where("status", "==", "ONLINE").where("heartbeatForeground", "<", T);
   queryRefForOnline.get().then((querySnapshot) => {
-    console.log('checkUserStatus, queryRefForOnline', querySnapshot.size);
+    console.log("checkUserStatus, queryRefForOnline", querySnapshot.size);
     querySnapshot.forEach(async (queryDocSnapshotUser) => {
-      console.log('checkUserStatus, queryRefForOnline, queryDocSnapshotUser.id', queryDocSnapshotUser.id);
+      console.log("checkUserStatus, queryRefForOnline, queryDocSnapshotUser.id", queryDocSnapshotUser.id);
       const heartbeatBackground = queryDocSnapshotUser.get("heartbeatBackground");
-      console.log('checkUserStatus, queryRefForOnline, heartbeatBackground', heartbeatBackground);
+      console.log("checkUserStatus, queryRefForOnline, heartbeatBackground", heartbeatBackground);
       if (heartbeatBackground < T) {
-        console.log('checkUserStatus, queryRefForOnline, heartbeatBackground < T');
+        console.log("checkUserStatus, queryRefForOnline, heartbeatBackground < T");
         const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
         ps.push(p);
         disconnectIfNeeded(queryDocSnapshotUser, ps);
-      }
-      else {
-        console.log('checkUserStatus, queryRefForOnline, NOT heartbeatBackground < T');
+      } else {
+        console.log("checkUserStatus, queryRefForOnline, NOT heartbeatBackground < T");
         const p = queryDocSnapshotUser.ref.update({status: "IDLE"});
         ps.push(p);
       }
@@ -926,9 +929,9 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
 
   const queryRefForIdle = usersColRef.where("status", "==", "IDLE").where("heartbeatBackground", "<", T);
   queryRefForIdle.get().then((querySnapshot) => {
-    console.log('checkUserStatus, queryRefForIdle', querySnapshot.size);
+    console.log("checkUserStatus, queryRefForIdle", querySnapshot.size);
     querySnapshot.forEach(async (queryDocSnapshotUser) => {
-      console.log('checkUserStatus, queryRefForIdle, queryDocSnapshotUser.id', queryDocSnapshotUser.id);
+      console.log("checkUserStatus, queryRefForIdle, queryDocSnapshotUser.id", queryDocSnapshotUser.id);
       const p = queryDocSnapshotUser.ref.update({status: "OFFLINE"});
       ps.push(p);
       disconnectIfNeeded(queryDocSnapshotUser, ps);
@@ -938,59 +941,59 @@ exports.checkUserStatus = functions.runWith(runWithObj).pubsub.schedule("* * * *
   // OFFLINE, HBBack new => IDLE
   const queryRefForOffline = usersColRef.where("status", "==", "OFFLINE").where("heartbeatBackground", ">=", T);
   queryRefForOffline.get().then((querySnapshot) => {
-    console.log('checkUserStatus, queryRefForOffline', querySnapshot.size);
+    console.log("checkUserStatus, queryRefForOffline", querySnapshot.size);
     querySnapshot.forEach(async (queryDocSnapshotUser) => {
-      console.log('checkUserStatus, queryRefForOffline, queryDocSnapshotUser.id', queryDocSnapshotUser.id);
+      console.log("checkUserStatus, queryRefForOffline, queryDocSnapshotUser.id", queryDocSnapshotUser.id);
       const p = queryDocSnapshotUser.ref.update({status: "IDLE"});
       ps.push(p);
     });
   });
 
-  console.log('checkUserStatus, ps', ps.length);
+  console.log("checkUserStatus, ps", ps.length);
 
   return Promise.all(ps);
 });
-
-const sendALGO = async (algodclient, fromAccountAddr, toAccountAddr, signAccount, amount, wait = false) => {
-  // txn
-  const suggestedParams = await algodclient.getTransactionParams().do();
-  const transactionOptions = {
-    from: fromAccountAddr,
-    to: toAccountAddr,
-    amount,
-    suggestedParams,
-  };
-  const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
-      transactionOptions,
-  );
-
-  // sign
-  const signedTxn = txn.signTxn(signAccount.sk);
-
-  // send raw
-  try {
-    const {txId} = await algodclient.sendRawTransaction(signedTxn).do();
-    console.log("txId", txId);
-
-    // confirm
-    if (wait) {
-      const timeout = 5;
-      await waitForConfirmation(algodclient, txId, timeout);
-      console.log("sendALGO, confirmed");
-    }
-
-    return {
-      txId,
-      error: null,
-    };
-  } catch (e) {
-    console.log("error", e);
-    return {
-      txId: null,
-      error: e,
-    };
-  }
-};
+// commented un used code due to lint errors
+// const sendALGO = async (algodclient, fromAccountAddr, toAccountAddr, signAccount, amount, wait = false) => {
+//   // txn
+//   const suggestedParams = await algodclient.getTransactionParams().do();
+//   const transactionOptions = {
+//     from: fromAccountAddr,
+//     to: toAccountAddr,
+//     amount,
+//     suggestedParams,
+//   };
+//   const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject(
+//       transactionOptions,
+//   );
+//
+//   // sign
+//   const signedTxn = txn.signTxn(signAccount.sk);
+//
+//   // send raw
+//   try {
+//     const {txId} = await algodclient.sendRawTransaction(signedTxn).do();
+//     console.log("txId", txId);
+//
+//     // confirm
+//     if (wait) {
+//       const timeout = 5;
+//       await waitForConfirmation(algodclient, txId, timeout);
+//       console.log("sendALGO, confirmed");
+//     }
+//
+//     return {
+//       txId,
+//       error: null,
+//     };
+//   } catch (e) {
+//     console.log("error", e);
+//     return {
+//       txId: null,
+//       error: e,
+//     };
+//   }
+// };
 
 const sendASA = async (algodclient, fromAccountAddr, toAccountAddr, signAccount, amount, assetIndex, wait = false) => {
   // txn
@@ -1034,6 +1037,53 @@ const sendASA = async (algodclient, fromAccountAddr, toAccountAddr, signAccount,
   }
 };
 
+exports.updateDeepLinks = functions.https.onCall(async (data, context) => {
+  const usersColRef = await db.collection("users");
+  const querySnapshot = await usersColRef.get();
+  for (const queryDocSnapshot of querySnapshot.docs) {
+    const url = queryDocSnapshot.get("url");
+    if (url != null && !url.toString().includes("2i2ishare")) {
+      console.log("url = " + url);
+      const data = queryDocSnapshot.data();
+      data.url = await createDynamicLink(queryDocSnapshot.id);
+    }
+  }
+});
+
+exports.getDeepLink = functions.https.onCall(async (data, context) => {
+  if (data != null && data.id != null) {
+    const url = await createDynamicLink(data.id);
+    return {"url": url};
+  }
+  return {"url": process.env["host"]+"/user/"+data.id};
+});
+
+const createDynamicLink = async (userId) => {
+  const data = {
+    "dynamicLinkInfo": {
+      "domainUriPrefix": process.env["domainUriPrefix "],
+      "link": process.env["host"]+"/user/"+userId,
+      "androidInfo": {
+        "androidPackageName": "app.i2i2",
+        "androidFallbackLink": process.env["host"],
+      },
+      "iosInfo": {
+        "iosBundleId": "app.2i2i",
+        "iosFallbackLink": process.env["host"],
+        "iosIpadFallbackLink": process.env["host"],
+        "iosIpadBundleId": "app.2i2i",
+        "iosAppStoreId": "1609689141",
+      },
+    },
+  };
+  const url = "https://firebasedynamiclinks.googleapis.com/v1/shortLinks?key=";
+  const response = await axios.post(url+process.env["PROJECT_KEY"], data);
+  if (response.status === 200) {
+    const newURL = response.data.shortLink;
+    console.log("newURL = " + newURL);
+    return newURL;
+  }
+};
 
 // exports.updateFX = functions.runWith(runWithObj).pubsub.schedule("* * * * *").onRun(async (context) => {
 //   const colRef = db.collection("FX");
@@ -1139,7 +1189,7 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
     if (pendingInfo !== undefined) {
       if (
         pendingInfo["confirmed-round"] !== null &&
-        pendingInfo["confirmed-round"] > 0
+                pendingInfo["confirmed-round"] > 0
       ) {
         // Got the completed Transaction
         return pendingInfo;
@@ -1147,7 +1197,7 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
 
       if (
         pendingInfo["pool-error"] != null &&
-        pendingInfo["pool-error"].length > 0
+                pendingInfo["pool-error"].length > 0
       ) {
         // If there was a pool error, then the transaction has been rejected!
         throw new Error(
@@ -1162,10 +1212,10 @@ const waitForConfirmation = async (algodclient, txId, timeout) => {
   throw new Error(`Transaction not confirmed after ${timeout} rounds!`);
 };
 
-//////
+// ////
 // TOP
 
-const TOP_SIZE = 10
+const TOP_SIZE = 10;
 
 const updateTopValues = async (meetingId, meeting) => updateTopMeetings("topValues", meetingId, meeting, topValueValue);
 const updateTopSpeeds = async (meetingId, meeting) => updateTopMeetings("topSpeeds", meetingId, meeting, topSpeedValue);
@@ -1185,8 +1235,8 @@ const getNamesForTopMeeting = async (T, meeting) => {
   const docB = docRefResults[1];
   const A = docA.get("name");
   const B = docB.get("name");
-  return { A, B };
-}
+  return {A, B};
+};
 const addTopMeeting = async (T, colRef, meetingId, meeting, valueFn, worst) => {
   console.log("addTopMeeting, meetingId", meetingId);
 
@@ -1194,8 +1244,8 @@ const addTopMeeting = async (T, colRef, meetingId, meeting, valueFn, worst) => {
 
   const names = await getNamesForTopMeeting(T, meeting);
   console.log("addTopMeeting, names", names);
-  
-  const obj = topObj(meeting, names.A, names.B, valueFn)
+
+  const obj = topObj(meeting, names.A, names.B, valueFn);
   console.log("addTopMeeting, obj", obj);
 
   const docRefNewTopMeeting = colRef.doc(meetingId);
@@ -1213,7 +1263,7 @@ const topObj = (meeting, nameA, nameB, valueFn) => {
     duration: meeting.duration,
     value: valueFn(meeting),
   };
-}
+};
 
 const updateTopMeetings = async (collection, meetingId, meeting, valueFn) => {
   console.log("updateTopMeetings, collection, meetingId, meeting.settled, meeting.speed.num, meeting.duration", collection, meetingId, meeting.settled, meeting.speed.num, meeting.duration);
@@ -1221,7 +1271,7 @@ const updateTopMeetings = async (collection, meetingId, meeting, valueFn) => {
   if (!meeting.settled) return;
   if (meeting.speed.num === 0) return;
   if (meeting.duration === 0) return;
-  
+
   const colRef = db.collection(collection);
   const query = colRef.orderBy("value", "desc").orderBy("ts");
 
@@ -1240,7 +1290,7 @@ const updateTopMeetings = async (collection, meetingId, meeting, valueFn) => {
       const value = queryDocSnapshot.get("value");
       console.log("i", i, value, queryDocSnapshot.get("ts"));
 
-      const valueMeeting = valueFn(meeting)
+      const valueMeeting = valueFn(meeting);
       if (valueMeeting && value < valueMeeting) {
         worst = querySnapshot.docs[querySnapshot.size - 1].ref;
         console.log("new record, worst.id", worst.id);
@@ -1256,11 +1306,11 @@ const updateTopMeetings = async (collection, meetingId, meeting, valueFn) => {
 };
 
 // TOP
-//////
+// ////
 
 const deleteDocsInCollection = (colRef, promises) =>
   colRef.listDocuments().then((docRefs) => {
-    docRefs.forEach(docRef => promises.push(docRef.delete()));
+    docRefs.forEach((docRef) => promises.push(docRef.delete()));
   });
 const deleteMeInternal = (uid) => {
   const p = [];
@@ -1281,7 +1331,7 @@ const deleteMeInternal = (uid) => {
   // TODO del image in storage
 
   return Promise.all(p);
-}
+};
 // deleteMe({})
 // exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInternal('0G0vv08yfbR5ZRPbaUA4UaQFGXk2'));
 exports.deleteMe = functions.https.onCall(async (data, context) => deleteMeInternal(context.auth.uid));
