@@ -1044,9 +1044,8 @@ exports.updateDeepLinks = functions.https.onCall(async (data, context) => {
     const url = queryDocSnapshot.get("url");
     if (url != null && !url.toString().includes("2i2ishare")) {
       console.log("url = " + url);
-      const data = queryDocSnapshot.data();
-      data.url = await createDynamicLink(queryDocSnapshot.id);
-      await db.doc(queryDocSnapshot.ref.path).set(data);
+      const newUrl = await createDynamicLink(queryDocSnapshot.id);
+      await queryDocSnapshot.ref.update({url: newUrl});
     }
   }
 });
