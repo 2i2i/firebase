@@ -1037,7 +1037,7 @@ const sendASA = async (algodclient, fromAccountAddr, toAccountAddr, signAccount,
   }
 };
 
-exports.updateDeepLinks = functions.https.onCall(async (data, context) => {
+exports.updateDeepLinks = functions.runWith({timeoutSeconds: 540}).https.onCall(async (data, context) => {
   const usersColRef = await db.collection("users");
   const querySnapshot = await usersColRef.get();
   for (const queryDocSnapshot of querySnapshot.docs) {
@@ -1051,14 +1051,15 @@ exports.updateDeepLinks = functions.https.onCall(async (data, context) => {
 });
 
 exports.getDeepLink = functions.https.onCall(async (data, context) => {
-  console.log("data "+data?.toString());
-  if (data != null && data.id != null) {
+  console.log("data " + data?.toString());
+  const uid = context.auth.uid;
+  if (data != null && uid != null) {
     console.log("Start ");
-    const url = await createDynamicLink(data.id);
-    console.log("url "+url);
+    const url = await createDynamicLink(uid);
+    console.log("url " + url);
     return {"url": url};
   }
-  return {"url": process.env["host"] + "/user/" + data.id};
+  return {"url": process.env["host"] + "/user/" + uid};
 });
 
 const createDynamicLink = async (userId) => {
@@ -1084,7 +1085,7 @@ const createDynamicLink = async (userId) => {
     },
   };
   const url = "https://firebasedynamiclinks.googleapis.com/v1/shortLinks?key=";
-  const response = await axios.post(url+process.env["PROJECT_KEY"], data);
+  const response = await axios.post(url + process.env["PROJECT_KEY"], data);
   if (response.status === 200) {
     const newURL = response.data.shortLink;
     console.log("newURL = " + newURL);
