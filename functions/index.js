@@ -1046,31 +1046,39 @@ exports.updateDeepLinks = functions.https.onCall(async (data, context) => {
       console.log("url = " + url);
       const data = queryDocSnapshot.data();
       data.url = await createDynamicLink(queryDocSnapshot.id);
+      await db.doc(queryDocSnapshot.ref.path).set(data);
     }
   }
 });
 
 exports.getDeepLink = functions.https.onCall(async (data, context) => {
+  console.log("data "+data?.toString());
   if (data != null && data.id != null) {
+    console.log("Start ");
     const url = await createDynamicLink(data.id);
+    console.log("url "+url);
     return {"url": url};
   }
-  return {"url": process.env["host"]+"/user/"+data.id};
+  return {"url": process.env["host"] + "/user/" + data.id};
 });
 
 const createDynamicLink = async (userId) => {
+  console.log("key "+process.env["PROJECT_KEY"]);
+  console.log("DOMAIN_URI_PREFIX "+process.env["DOMAIN_URI_PREFIX"]);
+  console.log("HOST "+process.env["HOST"]);
+  console.log("URL "+process.env["HOST"]+"/user/"+userId);
   const data = {
     "dynamicLinkInfo": {
-      "domainUriPrefix": process.env["domainUriPrefix "],
-      "link": process.env["host"]+"/user/"+userId,
+      "domainUriPrefix": process.env["DOMAIN_URI_PREFIX"],
+      "link": process.env["HOST"]+"/user/"+userId,
       "androidInfo": {
         "androidPackageName": "app.i2i2",
-        "androidFallbackLink": process.env["host"],
+        "androidFallbackLink": process.env["HOST"],
       },
       "iosInfo": {
         "iosBundleId": "app.2i2i",
-        "iosFallbackLink": process.env["host"],
-        "iosIpadFallbackLink": process.env["host"],
+        "iosFallbackLink": process.env["HOST"],
+        "iosIpadFallbackLink": process.env["HOST"],
         "iosIpadBundleId": "app.2i2i",
         "iosAppStoreId": "1609689141",
       },
